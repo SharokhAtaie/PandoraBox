@@ -1,15 +1,107 @@
+import { useState } from 'react'
 import { useProxyStore } from '@/store/proxy'
 import { useRequests } from '@/hooks/useRequests'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { cn } from '@/lib/utils'
 import type { Request } from '@/api/client'
-import { Search, Globe, RotateCcw, Trash2 } from 'lucide-react'
+import { Search, Globe, RotateCcw, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+
+type SortColumn = 'id' | 'method' | 'status' | 'host' | 'path' | 'query' | 'size' | 'time'
+type SortDirection = 'asc' | 'desc' | null
 
 export function RequestTable() {
   useRequests()
 
   const { requests, selectedRequestId, setSelectedRequestId, filters, setFilters, addToReplay, removeFromReplay, replayQueue } = useProxyStore()
+
+  const [sortColumn, setSortColumn] = useState<SortColumn>('id')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  // Sort and filter requests
+  const sortedRequests = [...requests].sort((a, b) => {
+    if (!sortDirection) return 0
+
+    let comparison = 0
+
+    switch (sortColumn) {
+      case 'id':
+        comparison = a.id - b.id
+        break
+      case 'method':
+        comparison = a.method.localeCompare(b.method)
+        break
+      case 'status': {
+        const aStatus = a.response?.status_code || 0
+        const bStatus = b.response?.status_code || 0
+        comparison = aStatus - bStatus
+        break
+      }
+      case 'host':
+        comparison = a.host.localeCompare(b.host)
+        break
+      case 'path':
+        comparison = a.path.localeCompare(b.path)
+        break
+      case 'query':
+        comparison = (a.query || '').localeCompare(b.query || '')
+        break
+      case 'size': {
+        const aSize = a.response?.size_bytes || 0
+        const bSize = b.response?.size_bytes || 0
+        comparison = aSize - bSize
+        break
+      }
+      case 'time': {
+        const aTime = a.response?.duration_ms || 0
+        const bTime = b.response?.duration_ms || 0
+        comparison = aTime - bTime
+        break
+      }
+    }
+
+    return sortDirection === 'asc' ? comparison : -comparison
+  })
+
+  // Apply filters
+  const filteredRequests = sortedRequests.filter((req) => {
+    if (filters.method && req.method !== filters.method) return false
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase()
+      return (
+        req.host.toLowerCase().includes(searchLower) ||
+        req.path.toLowerCase().includes(searchLower) ||
+        req.query.toLowerCase().includes(searchLower)
+      )
+    }
+    return true
+  })
+
+  function handleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      // Toggle direction
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('desc')
+    }
+  }
+
+  function truncateQuery(query: string, maxLength: number): string {
+    if (!query || query.length <= maxLength) return query
+    const half = Math.floor((maxLength - 3) / 2)
+    return `${query.slice(0, half)}...${query.slice(-half)}`
+  }
+
+  function truncatePath(path: string, maxLength: number): string {
+    if (!path || path.length <= maxLength) return path
+    return `${path.slice(0, maxLength)}...`
+  }
+
+  function getSortIcon(column: SortColumn) {
+    if (sortColumn !== column) return null
+    return sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -35,7 +127,7 @@ export function RequestTable() {
           ))}
         </select>
         <span className="text-xs text-muted-foreground px-2">
-          {requests.length} requests
+          {filteredRequests.length} requests
         </span>
       </div>
 
@@ -44,18 +136,74 @@ export function RequestTable() {
         <table className="w-full text-sm border-collapse">
           <thead className="sticky top-0 z-10">
             <tr className="bg-card border-b border-border text-muted-foreground text-xs font-medium">
-              <th className="text-left px-3 py-2 w-8">#</th>
-              <th className="text-left px-3 py-2 w-20">Method</th>
-              <th className="text-left px-3 py-2 w-12">Status</th>
-              <th className="text-left px-3 py-2 min-w-0 w-[160px]">Host</th>
-              <th className="text-left px-3 py-2 min-w-0">Path</th>
-              <th className="text-right px-3 py-2 w-20 hidden min-[900px]:table-cell">Size</th>
-              <th className="text-right px-3 py-2 w-20 hidden min-[900px]:table-cell">Time</th>
-              <th className="text-left px-3 py-2 w-24 hidden min-[1000px]:table-cell">Replay</th>
+              <th
+                onClick={() => handleSort('id')}
+                className="text-left px-3 py-2 w-8 cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  #{getSortIcon('id')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('method')}
+                className="text-left px-3 py-2 w-20 cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Method{getSortIcon('method')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('status')}
+                className="text-left px-3 py-2 w-12 cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Status{getSortIcon('status')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('host')}
+                className="text-left px-3 py-2 min-w-0 w-[160px] cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Host{getSortIcon('host')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('path')}
+                className="text-left px-3 py-2 min-w-0 w-[140px] cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Path{getSortIcon('path')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('query')}
+                className="text-left px-3 py-2 min-w-0 w-[140px] cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Query{getSortIcon('query')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('size')}
+                className="text-right px-3 py-2 w-20 hidden min-[900px]:table-cell cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center justify-end gap-1">
+                  Size{getSortIcon('size')}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('time')}
+                className="text-right px-3 py-2 w-20 hidden min-[900px]:table-cell cursor-pointer hover:text-foreground select-none"
+              >
+                <div className="flex items-center justify-end gap-1">
+                  Time{getSortIcon('time')}
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {requests.map((req) => (
+            {filteredRequests.map((req) => (
               <RequestRow
                 key={req.id}
                 req={req}
@@ -64,15 +212,17 @@ export function RequestTable() {
                 onClick={() => setSelectedRequestId(req.id === selectedRequestId ? null : req.id)}
                 onAddToReplay={() => addToReplay(req)}
                 onRemoveFromReplay={() => removeFromReplay(req.id)}
+                truncateQuery={truncateQuery}
+                truncatePath={truncatePath}
               />
             ))}
           </tbody>
         </table>
-        {requests.length === 0 && (
+        {filteredRequests.length === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
             <Globe className="mb-2 opacity-30" size={32} />
-            <p className="text-sm">No requests captured yet</p>
-            <p className="text-xs mt-1">Configure your browser to use proxy on port 8080</p>
+            <p className="text-sm">No requests found</p>
+            <p className="text-xs mt-1">Try adjusting your filters or configure proxy on port 8080</p>
           </div>
         )}
       </div>
@@ -87,6 +237,8 @@ function RequestRow({
   onClick,
   onAddToReplay,
   onRemoveFromReplay,
+  truncateQuery,
+  truncatePath,
 }: {
   req: Request
   selected: boolean
@@ -94,61 +246,124 @@ function RequestRow({
   onClick: () => void
   onAddToReplay: () => void
   onRemoveFromReplay: () => void
+  truncateQuery: (query: string, max: number) => string
+  truncatePath: (path: string, max: number) => string
 }) {
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
+
   const resp = req.response
+
+  // Truncate path with "..." at the end (max 60 chars)
+  const displayPath = truncatePath(req.path, 60)
+
+  // Truncate query string with "..." in the middle (max 30 chars)
+  const displayQuery = req.query ? truncateQuery(req.query, 30) : ''
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenuPosition({ x: e.clientX, y: e.clientY })
+    setContextMenuOpen(true)
+  }
+
+  function closeContextMenu() {
+    setContextMenuOpen(false)
+  }
+
+  // Close context menu on click outside or Escape
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      const handleOutsideClick = () => setContextMenuOpen(false)
+      document.addEventListener('click', handleOutsideClick)
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') setContextMenuOpen(false)
+      })
+      return () => {
+        document.removeEventListener('click', handleOutsideClick)
+      }
+    }
+  })
+
   return (
-    <tr
-      onClick={onClick}
-      className={cn(
-        'border-b border-border/50 cursor-pointer transition-colors',
-        selected
-          ? 'bg-primary/10 border-primary/30'
-          : 'hover:bg-muted/30'
-      )}
-    >
-      <td className="px-3 py-1.5 text-muted-foreground font-mono text-xs">{req.id}</td>
-      <td className="px-3 py-1.5">
-        <MethodBadge method={req.method} />
-      </td>
-      <td className="px-3 py-1.5">
-        {resp ? <StatusBadge code={resp.status_code} /> : <span className="text-muted-foreground">—</span>}
-      </td>
-      <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground min-w-0 w-[160px] max-w-[160px]">
-        <div className="truncate"><span className="text-foreground">{req.scheme}://</span>{req.host}</div>
-      </td>
-      <td className="px-3 py-1.5 font-mono text-xs min-w-0">
-        <div className="truncate">
-          {req.path}{req.query ? <span className="text-muted-foreground">?{req.query}</span> : null}
-        </div>
-      </td>
-      <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground hidden min-[900px]:table-cell">
-        {resp ? formatBytes(resp.size_bytes) : '—'}
-      </td>
-      <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground hidden min-[900px]:table-cell">
-        {resp ? `${resp.duration_ms}ms` : '—'}
-      </td>
-      <td className="px-3 py-1.5 hidden min-[1000px]:table-cell" onClick={(e) => e.stopPropagation()}>
-        {inReplay ? (
-          <button
-            onClick={onRemoveFromReplay}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-            title="Remove from Replay"
-          >
-            <Trash2 size={12} />
-            Remove
-          </button>
-        ) : (
-          <button
-            onClick={onAddToReplay}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
-            title="Send to Replay"
-          >
-            <RotateCcw size={12} />
-            Replay
-          </button>
+    <>
+      <tr
+        onClick={onClick}
+        onContextMenu={handleContextMenu}
+        className={cn(
+          'border-b border-border/50 cursor-pointer transition-colors',
+          selected
+            ? 'bg-primary/10 border-primary/30'
+            : 'hover:bg-muted/30'
         )}
-      </td>
-    </tr>
+      >
+        <td className="px-3 py-1.5 text-muted-foreground font-mono text-xs">{req.id}</td>
+        <td className="px-3 py-1.5">
+          <MethodBadge method={req.method} />
+        </td>
+        <td className="px-3 py-1.5">
+          {resp ? <StatusBadge code={resp.status_code} /> : <span className="text-muted-foreground">—</span>}
+        </td>
+        <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground min-w-0 w-[160px] max-w-[160px]">
+          <div className="truncate">{req.host}</div>
+        </td>
+        <td className="px-3 py-1.5 font-mono text-xs min-w-0 w-[140px]">
+          <div className="truncate text-foreground">{displayPath}</div>
+        </td>
+        <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground min-w-0 w-[140px]">
+          <div className="truncate">
+            {displayQuery ? (
+              <span className="opacity-60">{displayQuery}</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground hidden min-[900px]:table-cell">
+          {resp ? formatBytes(resp.size_bytes) : '—'}
+        </td>
+        <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground hidden min-[900px]:table-cell">
+          {resp ? `${resp.duration_ms}ms` : '—'}
+        </td>
+      </tr>
+
+      {/* Context Menu */}
+      {contextMenuOpen && (
+        <div
+          className="fixed bg-card border border-border rounded-lg shadow-lg py-1 z-50 min-w-[180px]"
+          style={{
+            left: `${contextMenuPosition.x}px`,
+            top: `${contextMenuPosition.y}px`,
+          }}
+        >
+          {inReplay ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemoveFromReplay()
+                closeContextMenu()
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors text-left"
+            >
+              <Trash2 size={14} />
+              Remove from Replay
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddToReplay()
+                closeContextMenu()
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors text-left"
+            >
+              <RotateCcw size={14} />
+              Send to Replay
+            </button>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 
