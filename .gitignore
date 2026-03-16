@@ -1,0 +1,133 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Node.js / UI
+ui/node_modules/
+ui/dist/
+ui/dist-electron/
+ui/.vite/
+ui/.electron/
+ui/out/
+ui/.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.fleet/
+*.code-workspace
+
+# Local configuration
+.claude/
+
+# Build artifacts
+*.o
+*.a
+*.prof
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+pitok.db
+
+# Certificate Authority (generated, not committed)
+# If user wants to track their CA, remove this line
+~/.pitokmonitor/
+
+# Electron
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.exe
+*.msi
+*.nupkg
+*.p7z
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Windows
+Rehanul/
+Thumbs.db
+ehthumbs.db
+
+# Linux
+*~
+.directory
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Test coverage
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Security
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+# Note: You may want to commit your CA cert for sharing, but not private keys
+
+# Claude Code specific
+memory/
+plans/

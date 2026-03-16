@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 222 20% 8%;
+  --foreground: 210 20% 88%;
+  --card: 220 18% 11%;
+  --card-foreground: 210 20% 88%;
+  --border: 215 15% 18%;
+  --input: 215 15% 16%;
+  --primary: 174 72% 46%;
+  --primary-foreground: 222 20% 8%;
+  --muted: 215 15% 14%;
+  --muted-foreground: 215 12% 52%;
+  --accent: 174 72% 46%;
+  --accent-foreground: 222 20% 8%;
+  /* Themeable font settings — overridden at runtime by ThemeProvider */
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-size-base: 12px;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
