@@ -8,6 +8,7 @@ import { FolderDetail } from '@/components/organizer/FolderDetail'
 import { FolderForm } from '@/components/organizer/FolderForm'
 import { OrganizerRequestPreview } from '@/components/organizer/OrganizerRequestPreview'
 import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { OrganizerFolder, OrganizerItem, OrganizerColor, OrganizerIcon } from '@/api/client'
 
 export function OrganizerPage() {
@@ -36,6 +37,8 @@ export function OrganizerPage() {
   const [formParentId, setFormParentId] = useState<number | undefined>()
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null)
   const [addToOrganizerRequestId, setAddToOrganizerRequestId] = useState<number | null>(null)
+  const [deletingFolderId, setDeletingFolderId] = useState<number | null>(null)
+  const [deletebusy, setDeleteBusy] = useState(false)
 
   // Item note debounce timers
   const itemNoteTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
@@ -108,13 +111,24 @@ export function OrganizerPage() {
     }
   }
 
-  const handleDeleteFolder = async (id: number) => {
-    if (!confirm('Delete this folder and all its contents?')) return
-    const promise = api.organizer.deleteFolder(id)
-    toast.promise(promise, { loading: 'Deleting…', success: 'Folder deleted', error: 'Failed to delete folder' })
-    await promise
-    removeFolder(id)
-    if (selectedFolderId === id) setSelectedFolder(null)
+  const handleDeleteFolder = (id: number) => {
+    setDeletingFolderId(id)
+  }
+
+  const confirmDeleteFolder = async () => {
+    if (deletingFolderId == null) return
+    setDeleteBusy(true)
+    try {
+      await api.organizer.deleteFolder(deletingFolderId)
+      toast.success('Folder deleted')
+      removeFolder(deletingFolderId)
+      if (selectedFolderId === deletingFolderId) setSelectedFolder(null)
+    } catch {
+      toast.error('Failed to delete folder')
+    } finally {
+      setDeleteBusy(false)
+      setDeletingFolderId(null)
+    }
   }
 
   const handleRenameFolder = async (id: number, name: string) => {
@@ -270,6 +284,17 @@ export function OrganizerPage() {
         requestId={addToOrganizerRequestId !== -1 ? addToOrganizerRequestId : null}
         onClose={() => setAddToOrganizerRequestId(null)}
         onCreateFolder={() => openCreateFolder()}
+      />
+
+      <ConfirmDialog
+        open={deletingFolderId != null}
+        title="Delete folder"
+        description="This will permanently delete the folder and all its subfolders and contents. This action cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        busy={deletebusy}
+        onConfirm={confirmDeleteFolder}
+        onClose={() => { if (!deletebusy) setDeletingFolderId(null) }}
       />
     </div>
   )
