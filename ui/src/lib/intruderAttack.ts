@@ -165,18 +165,18 @@ export async function runAttack(opts: {
     done++
     onProgress(done, total)
     onResult({ index: variantIndex, payloads: payloadValues, status, length, time, replayId, error })
+    // Hold this slot for `delay` ms before releasing it — each concurrent slot rate-limits independently
+    // so concurrency=5 + delay=1000ms gives ~5 requests/sec, not 1/sec
+    if (delay > 0 && !signal.aborted) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, delay)
+        signal.addEventListener('abort', () => { clearTimeout(t); resolve() }, { once: true })
+      })
+    }
   }
 
   for (const payloadValues of variants) {
     if (signal.aborted) break
-
-    if (delay > 0 && index > 0) {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, delay)
-        signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')) }, { once: true })
-      }).catch(() => {})
-      if (signal.aborted) break
-    }
 
     const p = runOne(index++, payloadValues).then(() => { running.delete(p) })
     running.add(p)
