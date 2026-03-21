@@ -364,9 +364,9 @@ function ServerSelector({ value, onChange, disabled }: {
 
 export function CollaboratorPage() {
   const {
-    host, server, status, error,
+    currentUrl, server, status, error,
     interactions, lastPollAt,
-    start, stop, clear, setServer,
+    start, stop, clear, setServer, regenerateUrl,
   } = useCollaboratorStore()
 
   const [selected, setSelected] = useState<Interaction | null>(null)
@@ -471,14 +471,24 @@ export function CollaboratorPage() {
             )}
 
             {isRunning && (
-              <button
-                onClick={() => { stop().then(() => start()) }}
-                title="Generate a new session with a fresh host"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-zinc-500 text-xs transition-colors"
-              >
-                <Plus size={11} />
-                New Session
-              </button>
+              <>
+                <button
+                  onClick={regenerateUrl}
+                  title="Generate a new unique URL (same session, new nonce)"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-zinc-500 text-xs transition-colors"
+                >
+                  <RefreshCw size={11} />
+                  New URL
+                </button>
+                <button
+                  onClick={() => { stop().then(() => start()) }}
+                  title="Start a brand-new session with a new correlation ID"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-zinc-500 text-xs transition-colors"
+                >
+                  <Plus size={11} />
+                  New Session
+                </button>
+              </>
             )}
 
             <button
@@ -493,23 +503,19 @@ export function CollaboratorPage() {
           </div>
         </div>
 
-        {/* ── Host bar ─────────────────────────────────────────────────────── */}
-        {host && (
+        {/* ── URL bar ──────────────────────────────────────────────────────── */}
+        {currentUrl && (
           <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-border/50 flex-wrap">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Your Host</span>
-              <span className="text-sm font-mono text-foreground truncate">{host}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">Test URL</span>
+              <span className="text-sm font-mono text-foreground truncate" title={currentUrl}>{currentUrl}</span>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Copy host */}
-              <CopyButton label="Host" value={host} copyKey="host" copied={copied} onCopy={copy} />
-              {/* Copy HTTP URL */}
-              <CopyButton label="HTTP URL" value={`http://${host}`} copyKey="http" copied={copied} onCopy={copy} />
-              {/* Copy DNS payload */}
-              <CopyButton label="DNS Lookup" value={`nslookup ${host}`} copyKey="dns" copied={copied} onCopy={copy} />
-              {/* Copy curl */}
-              <CopyButton label="cURL" value={`curl http://${host}`} copyKey="curl" copied={copied} onCopy={copy} />
+              <CopyButton label="Host" value={currentUrl} copyKey="host" copied={copied} onCopy={copy} />
+              <CopyButton label="HTTP URL" value={`http://${currentUrl}`} copyKey="http" copied={copied} onCopy={copy} />
+              <CopyButton label="DNS Lookup" value={`nslookup ${currentUrl}`} copyKey="dns" copied={copied} onCopy={copy} />
+              <CopyButton label="cURL" value={`curl http://${currentUrl}`} copyKey="curl" copied={copied} onCopy={copy} />
             </div>
 
             {/* Last poll */}
@@ -538,7 +544,7 @@ export function CollaboratorPage() {
       </div>
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
-      {status === 'idle' && interactions.length === 0 ? (
+      {status === 'idle' && !currentUrl && interactions.length === 0 ? (
         <IdleEmptyState onStart={() => start()} />
       ) : (
         <div className="flex flex-1 min-h-0 overflow-hidden">

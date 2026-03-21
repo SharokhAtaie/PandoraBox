@@ -14,15 +14,24 @@ export interface Interaction {
 
 export interface InteractshSession {
   server: string
-  correlationId: string
+  correlationId: string   // 20 letters-only chars (matching interactsh-web default)
   secretKey: string
-  host: string            // {correlationId}.{server}
+  currentUrl: string      // {corrId}{nonce}.{server} — what to show/use for testing
   _privateKey: CryptoKey  // RSA-OAEP private key — in-memory only, not serializable
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function randomAlphaLower(len: number): string {
+// Correlation ID: letters only (a-z), matching interactsh-web's generateRandomString(n, true)
+function randomLetters(len: number): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz'
+  const bytes = new Uint8Array(len)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('')
+}
+
+// Nonce: letters + digits, 13 chars (interactsh-web uses mixed)
+function randomNonce(len: number): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   const bytes = new Uint8Array(len)
   crypto.getRandomValues(bytes)
@@ -37,10 +46,17 @@ function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
+// Generate a test URL: corrId(20) + nonce(13) + server
+// The server extracts corrId as the first 20 chars of the subdomain.
+// The nonce makes each URL unique for tracking individual payloads.
+export function generateTestUrl(correlationId: string, server: string): string {
+  return `${correlationId}${randomNonce(13)}.${server}`
+}
+
 // ─── Session creation ─────────────────────────────────────────────────────────
 
 export async function createSession(server: string): Promise<{ session: InteractshSession; publicKeyB64: string }> {
-  // Generate RSA-2048 key pair (OAEP-SHA256)
+  // Generate RSA-2048 key pair with SHA-256 (matches interactsh-web node-rsa OAEP SHA-256)
   const keyPair = await crypto.subtle.generateKey(
     {
       name: 'RSA-OAEP',
@@ -53,22 +69,28 @@ export async function createSession(server: string): Promise<{ session: Interact
   )
 
   // Export public key as DER-encoded SPKI, wrap in PEM, then base64-encode the whole PEM.
-  // The interactsh server does: base64.Decode(field) → pem.Decode() → parse key.
-  // So the field must be base64(PEM string), not base64(raw DER bytes).
+  // The interactsh server does: base64.Decode(field) → pem.Decode() → x509.ParsePKIXPublicKey
+  // So the field must be base64(PEM string), matching interactsh-web's btoa(pub) where pub is pkcs8-public-pem.
   const spki = await crypto.subtle.exportKey('spki', keyPair.publicKey)
   const derB64 = btoa(String.fromCharCode(...new Uint8Array(spki)))
   const pemBody = derB64.match(/.{1,64}/g)?.join('\n') ?? derB64
   const pem = `-----BEGIN PUBLIC KEY-----\n${pemBody}\n-----END PUBLIC KEY-----\n`
   const publicKeyB64 = btoa(pem)
 
-  const correlationId = randomAlphaLower(20)
+  // Correlation ID must be letters-only (a-z), 20 chars — matches interactsh-web default
+  const correlationId = randomLetters(20)
   const secretKey = crypto.randomUUID()
+
+  // The URL shown to users MUST include a 13-char nonce suffix.
+  // The server requires the full subdomain to be corrId(20)+nonce(13)=33 chars minimum
+  // to record an interaction. The 20-char bare domain only serves the info page.
+  const currentUrl = generateTestUrl(correlationId, server)
 
   const session: InteractshSession = {
     server,
     correlationId,
     secretKey,
-    host: `${correlationId}.${server}`,
+    currentUrl,
     _privateKey: keyPair.privateKey,
   }
 
@@ -105,14 +127,17 @@ interface PollResponse {
 
 export async function poll(session: InteractshSession): Promise<Interaction[]> {
   const url = `https://${session.server}/poll?id=${session.correlationId}&secret=${encodeURIComponent(session.secretKey)}`
+  console.log('[interactsh] polling', url)
   const resp = await fetch(url, { signal: AbortSignal.timeout(8_000) })
   if (!resp.ok) throw new Error(`Poll failed: ${resp.status}`)
 
   const data = await resp.json() as PollResponse
+  console.log('[interactsh] poll response:', JSON.stringify(data))
   const interactions: Interaction[] = []
 
   // Decrypt AES-encrypted interactions
   if (data.data?.length && data.aes_key) {
+    console.log('[interactsh] poll: got', data.data.length, 'encrypted item(s)')
     let aesKey: CryptoKey | null = null
     try {
       const encAesKey = b64ToBytes(data.aes_key)
@@ -121,11 +146,12 @@ export async function poll(session: InteractshSession): Promise<Interaction[]> {
         session._privateKey,
         encAesKey,
       )
+      console.log('[interactsh] RSA decrypt OK, AES key bytes:', aesKeyBytes.byteLength)
       aesKey = await crypto.subtle.importKey(
         'raw', new Uint8Array(aesKeyBytes), { name: 'AES-CTR' }, false, ['decrypt'],
       )
-    } catch {
-      // If RSA decryption fails the AES key can't be recovered — skip encrypted batch
+    } catch (e) {
+      console.error('[interactsh] RSA decrypt failed:', e)
     }
 
     if (aesKey) {
@@ -139,10 +165,12 @@ export async function poll(session: InteractshSession): Promise<Interaction[]> {
             aesKey,
             ciphertext,
           )
-          const parsed = JSON.parse(new TextDecoder().decode(dec)) as Interaction
+          const text = new TextDecoder().decode(dec)
+          console.log('[interactsh] decrypted interaction:', text)
+          const parsed = JSON.parse(text) as Interaction
           interactions.push(parsed)
-        } catch {
-          // Skip malformed entries
+        } catch (e) {
+          console.error('[interactsh] AES decrypt/parse failed:', e)
         }
       }
     }
@@ -150,10 +178,18 @@ export async function poll(session: InteractshSession): Promise<Interaction[]> {
 
   // Extra unencrypted interactions
   for (const item of data.extra ?? []) {
-    try { interactions.push(JSON.parse(item) as Interaction) } catch { /* skip */ }
+    try {
+      const parsed = JSON.parse(item) as Interaction
+      console.log('[interactsh] extra interaction:', item)
+      interactions.push(parsed)
+    } catch { /* skip */ }
   }
   for (const item of data.tlddata ?? []) {
-    try { interactions.push(JSON.parse(item) as Interaction) } catch { /* skip */ }
+    try {
+      const parsed = JSON.parse(item) as Interaction
+      console.log('[interactsh] tlddata interaction:', item)
+      interactions.push(parsed)
+    } catch { /* skip */ }
   }
 
   return interactions

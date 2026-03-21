@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import {
-  createSession, register, poll, deregister,
+  createSession, register, poll, deregister, generateTestUrl,
   PUBLIC_SERVERS,
 } from '@/lib/interactsh'
 import type { Interaction, InteractshSession } from '@/lib/interactsh'
@@ -16,7 +16,7 @@ let _pollTimer: ReturnType<typeof setInterval> | null = null
 
 interface CollaboratorStore {
   // Session display state
-  host: string | null
+  currentUrl: string | null    // corrId(20)+nonce(13).server — what to use for testing
   server: string
   status: 'idle' | 'connecting' | 'active' | 'error'
   error: string | null
@@ -31,12 +31,13 @@ interface CollaboratorStore {
   stop: () => Promise<void>
   clear: () => void
   setServer: (s: string) => void
+  regenerateUrl: () => void     // generate a fresh nonce URL (same session)
 }
 
 const POLL_INTERVAL_MS = 5_000
 
 export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
-  host: null,
+  currentUrl: null,
   server: 'oast.pro',
   status: 'idle',
   error: null,
@@ -46,6 +47,11 @@ export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
 
   setServer: (server) => set({ server }),
 
+  regenerateUrl: () => {
+    if (!_session) return
+    set({ currentUrl: generateTestUrl(_session.correlationId, _session.server) })
+  },
+
   start: async (serverArg) => {
     const server = serverArg ?? get().server
 
@@ -53,17 +59,18 @@ export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null }
     if (_session) { await deregister(_session); _session = null }
 
-    set({ status: 'connecting', error: null, host: null, interactions: [] })
+    set({ status: 'connecting', error: null, currentUrl: null, interactions: [] })
 
     try {
       const { session, publicKeyB64 } = await createSession(server)
       await register(session, publicKeyB64)
       _session = session
-      set({ status: 'active', host: session.host, server })
+      set({ status: 'active', currentUrl: session.currentUrl, server })
 
       // ── Poll immediately, then on interval ───────────────────────────────
       const doPoll = async () => {
-        if (!_session) return
+        if (!_session) { console.log('[collaborator] doPoll skipped: no session'); return }
+        console.log('[collaborator] doPoll firing for', _session.correlationId)
         try {
           const results = await poll(_session)
           if (results.length > 0) {
@@ -77,8 +84,7 @@ export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
             set({ lastPollAt: new Date().toISOString() })
           }
         } catch (e) {
-          // Log but don't stop polling on transient errors
-          console.warn('[Collaborator] poll error:', e)
+          console.error('[collaborator] poll threw:', e)
         }
       }
 
@@ -93,7 +99,7 @@ export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
   stop: async () => {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null }
     if (_session) { await deregister(_session); _session = null }
-    set({ status: 'idle', host: null })
+    set({ status: 'idle', currentUrl: null })
   },
 
   clear: () => set({ interactions: [] }),
