@@ -4,11 +4,12 @@ export type AttackType = 'sniper' | 'battering_ram' | 'pitchfork' | 'cluster_bom
 
 export interface AttackResult {
   index: number
-  payloads: string[]      // one per marker position
+  payloads: string[]        // one per marker position
   status: number | null
   length: number | null
-  time: number            // ms
-  replayId: number | null // for full request/response inspection
+  time: number              // ms
+  replayId: number | null   // for full request/response inspection
+  sentRequestId: number | null  // actual request ID of the sent variant
   error?: string
 }
 
@@ -107,7 +108,7 @@ async function sendVariant(
   raw: string,
   requestId: number,
   signal: AbortSignal,
-): Promise<{ status: number | null; length: number | null; time: number; replayId: number | null; error?: string }> {
+): Promise<{ status: number | null; length: number | null; time: number; replayId: number | null; sentRequestId: number | null; error?: string }> {
   const start = performance.now()
   try {
     // base64-encode: handle unicode chars correctly
@@ -123,7 +124,7 @@ async function sendVariant(
         length = replay.response.body.length
       }
     }
-    return { status, length, time, replayId: replay.id }
+    return { status, length, time, replayId: replay.id, sentRequestId: replay.request_id }
   } catch (err) {
     if (signal.aborted) throw err
     return {
@@ -131,6 +132,7 @@ async function sendVariant(
       length: null,
       time: Math.round(performance.now() - start),
       replayId: null,
+      sentRequestId: null,
       error: err instanceof Error ? err.message : String(err),
     }
   }
@@ -161,10 +163,10 @@ export async function runAttack(opts: {
 
   async function runOne(variantIndex: number, payloadValues: string[]): Promise<void> {
     const variant = markers.length > 0 ? applyPayloads(raw, markers, payloadValues) : raw
-    const { status, length, time, replayId, error } = await sendVariant(variant, requestId, signal)
+    const { status, length, time, replayId, sentRequestId, error } = await sendVariant(variant, requestId, signal)
     done++
     onProgress(done, total)
-    onResult({ index: variantIndex, payloads: payloadValues, status, length, time, replayId, error })
+    onResult({ index: variantIndex, payloads: payloadValues, status, length, time, replayId, sentRequestId, error })
     // Hold this slot for `delay` ms before releasing it — each concurrent slot rate-limits independently
     // so concurrency=5 + delay=1000ms gives ~5 requests/sec, not 1/sec
     if (delay > 0 && !signal.aborted) {

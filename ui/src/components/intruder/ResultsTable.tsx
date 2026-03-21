@@ -1,8 +1,17 @@
 import { useState, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, Loader2, RotateCcw, GitBranch, FolderPlus, Link, Copy, Terminal, Code2, Crosshair } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { ResultInspectorPanel } from './ResultInspectorPanel'
+import { AddToFlowModal } from '@/components/flows/AddToFlowModal'
+import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
+import { useContextMenu } from '@/hooks/useContextMenu'
+import { useProxyStore } from '@/store/proxy'
+import { useIntruderStore } from '@/store/intruder'
+import { copyURL, copyRawRequest, copyAsCurl, copyAsFetch } from '@/lib/copyRequest'
+import { api } from '@/api/client'
+import type { Request } from '@/api/client'
 import type { AttackResult } from '@/store/intruder'
 
 type SortKey = 'index' | 'status' | 'length' | 'time'
@@ -27,13 +36,47 @@ function filterResults(results: AttackResult[], statusFilter: string, minLen: st
 }
 
 export function ResultsTable({ results, markerCount }: Props) {
+  const navigate = useNavigate()
   const parentRef = useRef<HTMLDivElement>(null)
+
+  // Inspector
   const [inspected, setInspected] = useState<AttackResult | null>(null)
+
+  // Sorting / filtering
   const [sortKey, setSortKey] = useState<SortKey>('index')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [statusFilter, setStatusFilter] = useState('')
   const [minLen, setMinLen] = useState('')
   const [maxLen, setMaxLen] = useState('')
+
+  // Context menu
+  const { open: menuOpen, openMenu, close: closeMenu, menuRef } = useContextMenu()
+  const [ctxResult, setCtxResult] = useState<AttackResult | null>(null)
+  const [ctxRequest, setCtxRequest] = useState<Request | null>(null)
+  const [ctxLoading, setCtxLoading] = useState(false)
+  const [addToFlowOpen, setAddToFlowOpen] = useState(false)
+  const [addToOrganizerOpen, setAddToOrganizerOpen] = useState(false)
+
+  // Stores
+  const addToReplay = useProxyStore((s) => s.addToReplay)
+  const replayQueue = useProxyStore((s) => s.replayQueue)
+  const removeRequestFromReplay = useProxyStore((s) => s.removeRequestFromReplay)
+
+  async function handleContextMenu(e: React.MouseEvent, result: AttackResult) {
+    if (result.sentRequestId == null) return
+    openMenu(e)
+    setCtxResult(result)
+    setCtxRequest(null)
+    setCtxLoading(true)
+    try {
+      const req = await api.requests.get(result.sentRequestId)
+      setCtxRequest(req)
+    } catch {
+      // keep ctxRequest null — menu items will stay disabled
+    } finally {
+      setCtxLoading(false)
+    }
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -74,6 +117,8 @@ export function ResultsTable({ results, markerCount }: Props) {
       </th>
     )
   }
+
+  const inReplay = ctxRequest ? replayQueue.some((e) => e.request.id === ctxRequest.id) : false
 
   if (results.length === 0) {
     return (
@@ -166,14 +211,13 @@ export function ResultsTable({ results, markerCount }: Props) {
                         </colgroup>
                         <tbody>
                           <tr
-                            className={`border-b border-border/50 transition-colors select-none ${
-                              isActive
-                                ? 'bg-primary/10 cursor-pointer'
-                                : 'hover:bg-muted/50 cursor-pointer'
+                            className={`border-b border-border/50 transition-colors select-none cursor-pointer ${
+                              isActive ? 'bg-primary/10' : 'hover:bg-muted/50'
                             }`}
                             onClick={() => setInspected(isActive ? null : r)}
                             onDoubleClick={() => setInspected(r)}
-                            title="Double-click to inspect request/response"
+                            onContextMenu={(e) => handleContextMenu(e, r)}
+                            title="Double-click to inspect · Right-click for actions"
                           >
                             <td className="px-3 py-2 text-xs text-muted-foreground">{r.index + 1}</td>
                             {Array.from({ length: cols }, (_, i) => (
@@ -206,15 +250,14 @@ export function ResultsTable({ results, markerCount }: Props) {
           </div>
         </div>
 
-        {/* Hint */}
         {!inspected && results.length > 0 && (
           <p className="text-[10px] text-muted-foreground/50 pt-1 text-right">
-            Double-click a row to inspect request / response
+            Double-click to inspect · Right-click for actions
           </p>
         )}
       </div>
 
-      {/* Inspector panel — slides in from right */}
+      {/* Inspector panel */}
       <div className={`flex-col min-w-0 overflow-hidden transition-all duration-200 ${inspected ? 'flex flex-[0_0_45%]' : 'hidden w-0'}`}>
         {inspected && (
           <ResultInspectorPanel
@@ -224,6 +267,138 @@ export function ResultsTable({ results, markerCount }: Props) {
           />
         )}
       </div>
+
+      {/* Context menu */}
+      {menuOpen && ctxResult && (
+        <div
+          ref={menuRef}
+          className="fixed z-50 min-w-[220px] rounded-lg border border-border bg-card py-1 shadow-lg"
+          style={{ left: 0, top: 0 }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
+        >
+          {/* Loading state */}
+          {ctxLoading && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 size={12} className="animate-spin" />
+              Loading…
+            </div>
+          )}
+
+          {/* Actions — shown once request is loaded */}
+          {!ctxLoading && ctxRequest && (
+            <>
+              {/* Result info */}
+              <div className="px-3 py-1.5 border-b border-border mb-1">
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  #{ctxResult.index + 1} · {ctxResult.payloads.filter(Boolean).join(' / ') || 'no payload'}
+                </span>
+              </div>
+
+              {/* Send to Replay */}
+              {inReplay ? (
+                <button
+                  onClick={() => { removeRequestFromReplay(ctxRequest.id); closeMenu() }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <RotateCcw size={14} />
+                  Remove from Replay
+                </button>
+              ) : (
+                <button
+                  onClick={() => { addToReplay(ctxRequest); closeMenu() }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <RotateCcw size={14} />
+                  Send to Replay
+                </button>
+              )}
+
+              {/* Send to Intruder (new session) */}
+              <button
+                onClick={() => { useIntruderStore.getState().addSession(ctxRequest); navigate('/intruder'); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Crosshair size={14} />
+                Send to Intruder
+              </button>
+
+              {/* Send to Flow */}
+              <button
+                onClick={() => { setAddToFlowOpen(true); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <GitBranch size={14} />
+                Send to Flow
+              </button>
+
+              {/* Manage in Organizer */}
+              <button
+                onClick={() => { setAddToOrganizerOpen(true); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <FolderPlus size={14} />
+                Manage in Organizer
+              </button>
+
+              <div className="my-1 border-t border-border" />
+
+              {/* Copy section */}
+              <div className="px-3 py-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy</span>
+              </div>
+
+              <button
+                onClick={() => { copyURL(ctxRequest); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Link size={14} />Copy URL
+              </button>
+              <button
+                onClick={() => { copyRawRequest(ctxRequest); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Copy size={14} />Copy Raw Request
+              </button>
+              <button
+                onClick={() => { copyAsCurl(ctxRequest); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Terminal size={14} />Copy as cURL
+              </button>
+              <button
+                onClick={() => { copyAsFetch(ctxRequest); closeMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Code2 size={14} />Copy as fetch()
+              </button>
+            </>
+          )}
+
+          {/* Error state */}
+          {!ctxLoading && !ctxRequest && (
+            <div className="px-3 py-2 text-xs text-muted-foreground">
+              Could not load request data
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sub-modals */}
+      {ctxRequest && (
+        <>
+          <AddToFlowModal
+            open={addToFlowOpen}
+            request={ctxRequest}
+            onClose={() => setAddToFlowOpen(false)}
+          />
+          <AddToOrganizerModal
+            open={addToOrganizerOpen}
+            requestId={ctxRequest.id}
+            onClose={() => setAddToOrganizerOpen(false)}
+          />
+        </>
+      )}
     </div>
   )
 }
