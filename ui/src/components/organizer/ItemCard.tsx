@@ -1,11 +1,18 @@
-import { useState } from 'react'
-import { GripVertical, StickyNote, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { GripVertical, StickyNote, X, Highlighter, RotateCcw, Trash2, GitBranch, FolderPlus, Target } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { toast } from 'sonner'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { NoteEditor } from './NoteEditor'
 import { FOLDER_COLOR_CLASSES } from './OrganizerIcons'
+import { AddToFlowModal } from '@/components/flows/AddToFlowModal'
+import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
+import { api, type ScopeRule } from '@/api/client'
+import { useProxyStore } from '@/store/proxy'
+import { useOrganizerStore } from '@/store/organizer'
+import { parseRequestTags, REQUEST_TAG_HIGHLIGHTED } from '@/lib/requestTags'
 import type { OrganizerItem, OrganizerColor } from '@/api/client'
 
 function relativeTime(ts: string): string {
@@ -14,6 +21,16 @@ function relativeTime(ts: string): string {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
   return `${Math.floor(diff / 86400000)}d ago`
+}
+
+function buildExcludeRule(kind: 'entirely' | 'host' | 'path' | 'subpath', req: NonNullable<OrganizerItem['request']>): ScopeRule {
+  function escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+  switch (kind) {
+    case 'entirely': return { enabled: true, pattern_type: 'exact', host: req.host, path: req.path }
+    case 'host':     return { enabled: true, pattern_type: 'exact', host: req.host, path: '' }
+    case 'path':     return { enabled: true, pattern_type: 'regex', host: '.*', path: `^${escapeRegex(req.path)}$` }
+    case 'subpath':  return { enabled: true, pattern_type: 'regex', host: `^${escapeRegex(req.host)}$`, path: `^${escapeRegex(req.path)}` }
+  }
 }
 
 interface Props {
@@ -29,8 +46,24 @@ interface Props {
 
 export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNoteChange, onNoteSave, sortable = true }: Props) {
   const [showNote, setShowNote] = useState(false)
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
+  const [addToFlowOpen, setAddToFlowOpen] = useState(false)
+  const [addToOrganizerOpen, setAddToOrganizerOpen] = useState(false)
+
   const colorCls = FOLDER_COLOR_CLASSES[folderColor]
   const req = item.request
+
+  const project = useProxyStore((s) => s.project)
+  const setProject = useProxyStore((s) => s.setProject)
+  const replayQueue = useProxyStore((s) => s.replayQueue)
+  const addToReplay = useProxyStore((s) => s.addToReplay)
+  const removeRequestFromReplay = useProxyStore((s) => s.removeRequestFromReplay)
+  const updateRequest = useProxyStore((s) => s.updateRequest)
+  const upsertItem = useOrganizerStore((s) => s.upsertItem)
+
+  const inReplay = req ? replayQueue.some((e) => e.request.id === req.id) : false
+  const highlighted = req ? parseRequestTags(req).includes(REQUEST_TAG_HIGHLIGHTED) : false
 
   const {
     attributes,
@@ -47,6 +80,55 @@ export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNo
     opacity: isDragging ? 0.5 : 1,
   }
 
+  useEffect(() => {
+    if (!contextMenuOpen) return
+    function handleOutsideClick() { setContextMenuOpen(false) }
+    function handleKeyDown(e: KeyboardEvent) { if (e.key === 'Escape') setContextMenuOpen(false) }
+    document.addEventListener('click', handleOutsideClick)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('click', handleOutsideClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenuOpen])
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenuPosition({ x: e.clientX, y: e.clientY })
+    setContextMenuOpen(true)
+  }
+
+  function closeContextMenu() { setContextMenuOpen(false) }
+
+  async function handleToggleHighlight() {
+    if (!req) return
+    const tags = parseRequestTags(req)
+    const next = highlighted
+      ? tags.filter((t) => t !== REQUEST_TAG_HIGHLIGHTED)
+      : [...tags, REQUEST_TAG_HIGHLIGHTED]
+    try {
+      const updated = await api.requests.updateTags(req.id, next)
+      updateRequest(updated)
+      upsertItem({ ...item, request: updated })
+    } catch {
+      toast.error('Failed to update highlight')
+    }
+  }
+
+  async function addExcludeRule(kind: 'entirely' | 'host' | 'path' | 'subpath') {
+    if (!req) return
+    const scope = project?.scope ?? { enabled: false, include_rules: [], exclude_rules: [] }
+    const rule = buildExcludeRule(kind, req)
+    try {
+      const updated = await api.project.update({ scope: { ...scope, exclude_rules: [...scope.exclude_rules, rule] } })
+      setProject(updated)
+      toast.success('Scope rule added')
+    } catch {
+      toast.error('Failed to update scope')
+    }
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -56,6 +138,7 @@ export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNo
           ? `${colorCls.bg} ${colorCls.border} border-l-2`
           : 'bg-zinc-800/40 border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-800/70'
       }`}
+      onContextMenu={handleContextMenu}
     >
       <div
         className="flex items-start gap-2 p-2.5 cursor-pointer"
@@ -76,6 +159,7 @@ export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNo
           <div className="flex items-center gap-2 flex-wrap">
             {req && <MethodBadge method={req.method} />}
             {req?.response && <StatusBadge code={req.response.status_code} />}
+            {highlighted && <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.6)]" />}
             <span className="text-xs text-zinc-400 truncate font-mono">
               {req ? `${req.host}${req.path}` : `Request #${item.request_id}`}
             </span>
@@ -102,7 +186,7 @@ export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNo
             <StickyNote size={13} />
           </button>
           <button
-            onClick={onRemove}
+            onClick={(e) => { e.stopPropagation(); onRemove() }}
             className="p-1 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
             title="Remove from folder"
           >
@@ -122,6 +206,114 @@ export function ItemCard({ item, selected, folderColor, onSelect, onRemove, onNo
             height={120}
           />
         </div>
+      )}
+
+      {/* Context menu */}
+      {contextMenuOpen && (
+        <div
+          className="fixed z-50 min-w-[240px] rounded-lg border border-border bg-card py-1 shadow-lg"
+          style={{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {req && (
+            <>
+              <button
+                onClick={() => { handleToggleHighlight(); closeContextMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <Highlighter size={14} className={highlighted ? 'text-amber-300' : undefined} />
+                {highlighted ? 'Remove highlight' : 'Highlight in history'}
+              </button>
+
+              {inReplay ? (
+                <button
+                  onClick={() => { removeRequestFromReplay(req.id); closeContextMenu() }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <Trash2 size={14} />
+                  Remove from Replay
+                </button>
+              ) : (
+                <button
+                  onClick={() => { addToReplay(req); closeContextMenu() }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <RotateCcw size={14} />
+                  Send to Replay
+                </button>
+              )}
+
+              <button
+                onClick={() => { setAddToFlowOpen(true); closeContextMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <GitBranch size={14} />
+                Send to Flow
+              </button>
+
+              <button
+                onClick={() => { setAddToOrganizerOpen(true); closeContextMenu() }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <FolderPlus size={14} />
+                Manage in Organizer
+              </button>
+
+              <div className="my-1 border-t border-border" />
+
+              <div className="px-3 py-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Remove from Scope
+                </span>
+              </div>
+
+              {([
+                { kind: 'entirely', label: 'Remove entirely',  desc: 'exact host + exact path' },
+                { kind: 'host',     label: 'Remove host',      desc: 'exact host, any path' },
+                { kind: 'path',     label: 'Remove path',      desc: 'exact path, any host' },
+                { kind: 'subpath',  label: 'Remove sub-path',  desc: 'exact host, path + all sub-paths' },
+              ] as const).map(({ kind, label, desc }) => (
+                <button
+                  key={kind}
+                  onClick={() => { addExcludeRule(kind).catch(console.error); closeContextMenu() }}
+                  className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted"
+                >
+                  <Target size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+                  <div>
+                    <div className="text-sm">{label}</div>
+                    <div className="text-xs text-muted-foreground">{desc}</div>
+                  </div>
+                </button>
+              ))}
+
+              <div className="my-1 border-t border-border" />
+            </>
+          )}
+
+          <button
+            onClick={() => { onRemove(); closeContextMenu() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-muted"
+          >
+            <X size={14} />
+            Remove from folder
+          </button>
+        </div>
+      )}
+
+      {/* Sub-modals */}
+      {req && (
+        <>
+          <AddToFlowModal
+            open={addToFlowOpen}
+            request={req}
+            onClose={() => setAddToFlowOpen(false)}
+          />
+          <AddToOrganizerModal
+            open={addToOrganizerOpen}
+            requestId={req.id}
+            onClose={() => setAddToOrganizerOpen(false)}
+          />
+        </>
       )}
     </div>
   )
