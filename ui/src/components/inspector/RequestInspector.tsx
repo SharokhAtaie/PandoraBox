@@ -1,27 +1,53 @@
 import { useEffect, useState } from 'react'
 import { useProxyStore } from '@/store/proxy'
 import { api } from '@/api/client'
-import type { Request } from '@/api/client'
+import type { Request, ScopeRule } from '@/api/client'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { CodeViewer } from '@/components/common/CodeViewer'
-import { X, Copy, PanelBottomOpen, PanelRightOpen } from 'lucide-react'
+import { AddToFlowModal } from '@/components/flows/AddToFlowModal'
+import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
+import { X, Copy, PanelBottomOpen, PanelRightOpen, Highlighter, RotateCcw, Trash2, GitBranch, FolderPlus, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { decodeBodyBytes, decodeBodyForDisplay, type DecodedBody, type RawBody } from '@/lib/httpBodies'
 import { presentBody } from '@/lib/bodyPresentation'
 import { useWorkspaceStore } from '@/store/workspace'
+import { parseRequestTags, REQUEST_TAG_HIGHLIGHTED } from '@/lib/requestTags'
+import { toast } from 'sonner'
 
 type Tab = 'request' | 'response'
+
+function buildExcludeRule(kind: 'entirely' | 'host' | 'path' | 'subpath', req: Request): ScopeRule {
+  function escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+  switch (kind) {
+    case 'entirely': return { enabled: true, pattern_type: 'exact', host: req.host, path: req.path }
+    case 'host':     return { enabled: true, pattern_type: 'exact', host: req.host, path: '' }
+    case 'path':     return { enabled: true, pattern_type: 'regex', host: '.*', path: `^${escapeRegex(req.path)}$` }
+    case 'subpath':  return { enabled: true, pattern_type: 'regex', host: `^${escapeRegex(req.host)}$`, path: `^${escapeRegex(req.path)}` }
+  }
+}
 
 export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'none' }) {
   const { selectedRequestId, setSelectedRequestId } = useProxyStore()
   const inspectorPosition = useWorkspaceStore((state) => state.inspectorPosition)
   const setInspectorPosition = useWorkspaceStore((state) => state.setInspectorPosition)
+  const project = useProxyStore((s) => s.project)
+  const setProject = useProxyStore((s) => s.setProject)
+  const replayQueue = useProxyStore((s) => s.replayQueue)
+  const addToReplay = useProxyStore((s) => s.addToReplay)
+  const removeRequestFromReplay = useProxyStore((s) => s.removeRequestFromReplay)
+  const updateRequest = useProxyStore((s) => s.updateRequest)
+
   const [req, setReq] = useState<Request | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('request')
   const [copiedMsg, setCopiedMsg] = useState('')
   const [requestBody, setRequestBody] = useState<DecodedBody | null>(null)
   const [responseBody, setResponseBody] = useState<DecodedBody | null>(null)
+
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
+  const [addToFlowOpen, setAddToFlowOpen] = useState(false)
+  const [addToOrganizerOpen, setAddToOrganizerOpen] = useState(false)
 
   useEffect(() => {
     if (!selectedRequestId) {
@@ -55,6 +81,58 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
     }
   }, [req])
 
+  useEffect(() => {
+    if (!contextMenuOpen) return
+    function handleOutsideClick() { setContextMenuOpen(false) }
+    function handleKeyDown(e: KeyboardEvent) { if (e.key === 'Escape') setContextMenuOpen(false) }
+    document.addEventListener('click', handleOutsideClick)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('click', handleOutsideClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenuOpen])
+
+  const highlighted = req ? parseRequestTags(req).includes(REQUEST_TAG_HIGHLIGHTED) : false
+  const inReplay = req ? replayQueue.some((e) => e.request.id === req.id) : false
+
+  function handleContextMenu(e: React.MouseEvent) {
+    if (!req) return
+    e.preventDefault()
+    setContextMenuPosition({ x: e.clientX, y: e.clientY })
+    setContextMenuOpen(true)
+  }
+
+  function closeContextMenu() { setContextMenuOpen(false) }
+
+  async function handleToggleHighlight() {
+    if (!req) return
+    const tags = parseRequestTags(req)
+    const next = highlighted
+      ? tags.filter((t) => t !== REQUEST_TAG_HIGHLIGHTED)
+      : [...tags, REQUEST_TAG_HIGHLIGHTED]
+    try {
+      const updated = await api.requests.updateTags(req.id, next)
+      updateRequest(updated)
+      setReq(updated)
+    } catch {
+      toast.error('Failed to update highlight')
+    }
+  }
+
+  async function addExcludeRule(kind: 'entirely' | 'host' | 'path' | 'subpath') {
+    if (!req) return
+    const scope = project?.scope ?? { enabled: false, include_rules: [], exclude_rules: [] }
+    const rule = buildExcludeRule(kind, req)
+    try {
+      const updated = await api.project.update({ scope: { ...scope, exclude_rules: [...scope.exclude_rules, rule] } })
+      setProject(updated)
+      toast.success('Scope rule added')
+    } catch {
+      toast.error('Failed to update scope')
+    }
+  }
+
   if (!req) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -80,10 +158,12 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
         edge === 'left' && 'border-l border-border',
         edge === 'top' && 'border-t border-border'
       )}
+      onContextMenu={handleContextMenu}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <MethodBadge method={req.method} />
+        {highlighted && <span className="h-2 w-2 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.6)] flex-shrink-0" />}
         <span className="font-mono text-xs text-muted-foreground flex-1 truncate">
           {req.scheme}://{req.host}{req.path}
           {req.query ? <span className="text-muted-foreground/60">?{req.query}</span> : null}
@@ -153,6 +233,97 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
           <div className="text-muted-foreground text-sm">No response</div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenuOpen && (
+        <div
+          className="fixed z-50 min-w-[240px] rounded-lg border border-border bg-card py-1 shadow-lg"
+          style={{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            onClick={() => { handleToggleHighlight(); closeContextMenu() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+          >
+            <Highlighter size={14} className={highlighted ? 'text-amber-300' : undefined} />
+            {highlighted ? 'Remove highlight' : 'Highlight in history'}
+          </button>
+
+          {inReplay ? (
+            <button
+              onClick={() => { removeRequestFromReplay(req.id); closeContextMenu() }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+            >
+              <Trash2 size={14} />
+              Remove from Replay
+            </button>
+          ) : (
+            <button
+              onClick={() => { addToReplay(req); closeContextMenu() }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+            >
+              <RotateCcw size={14} />
+              Send to Replay
+            </button>
+          )}
+
+          <button
+            onClick={() => { setAddToFlowOpen(true); closeContextMenu() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+          >
+            <GitBranch size={14} />
+            Send to Flow
+          </button>
+
+          <button
+            onClick={() => { setAddToOrganizerOpen(true); closeContextMenu() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+          >
+            <FolderPlus size={14} />
+            Add to Organizer
+          </button>
+
+          <div className="my-1 border-t border-border" />
+
+          <div className="px-3 py-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Remove from Scope
+            </span>
+          </div>
+
+          {([
+            { kind: 'entirely', label: 'Remove entirely',  desc: 'exact host + exact path' },
+            { kind: 'host',     label: 'Remove host',      desc: 'exact host, any path' },
+            { kind: 'path',     label: 'Remove path',      desc: 'exact path, any host' },
+            { kind: 'subpath',  label: 'Remove sub-path',  desc: 'exact host, path + all sub-paths' },
+          ] as const).map(({ kind, label, desc }) => (
+            <button
+              key={kind}
+              onClick={() => { addExcludeRule(kind).catch(console.error); closeContextMenu() }}
+              className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted"
+            >
+              <Target size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+              <div>
+                <div className="text-sm">{label}</div>
+                <div className="text-xs text-muted-foreground">{desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Sub-modals */}
+      <AddToFlowModal
+        open={addToFlowOpen}
+        request={req}
+        onClose={() => setAddToFlowOpen(false)}
+      />
+      <AddToOrganizerModal
+        open={addToOrganizerOpen}
+        requestId={req.id}
+        onClose={() => setAddToOrganizerOpen(false)}
+      />
     </div>
   )
 }
