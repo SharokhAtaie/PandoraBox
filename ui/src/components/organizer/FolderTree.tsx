@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -38,6 +38,7 @@ interface FolderRowProps {
   onEdit: () => void
   onDelete: () => void
   onRename: (name: string) => void
+  renderChildren?: () => React.ReactNode
 }
 
 function FolderRow({
@@ -52,6 +53,7 @@ function FolderRow({
   onEdit,
   onDelete,
   onRename,
+  renderChildren,
 }: FolderRowProps) {
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(folder.name)
@@ -174,28 +176,13 @@ function FolderRow({
       </div>
 
       {/* Children */}
-      {expanded && hasChildren && (
-        <div>
-          {folder.children!.map((child) => (
-            <FolderRowWrapper key={child.id} folder={child} depth={depth + 1} />
-          ))}
-        </div>
+      {expanded && hasChildren && renderChildren && (
+        <div>{renderChildren()}</div>
       )}
     </div>
   )
 }
 
-// Context-aware wrapper — used for nested rendering
-interface WrapperProps {
-  folder: OrganizerFolder
-  depth: number
-}
-
-function FolderRowWrapper({ folder, depth }: WrapperProps) {
-  // This is a stub that gets replaced with full context in FolderTree
-  // We'll pass handlers via props instead
-  return <div data-folder-id={folder.id} data-depth={depth} />
-}
 
 interface FolderTreeProps {
   roots: OrganizerFolder[]
@@ -235,7 +222,7 @@ export function FolderTree({
     onReorderFolders(arrayMove(roots, oldIdx, newIdx))
   }
 
-  const renderFolder = (folder: OrganizerFolder, depth: number) => (
+  const renderFolder = (folder: OrganizerFolder, depth: number): React.ReactNode => (
     <FolderRow
       key={folder.id}
       folder={folder}
@@ -249,6 +236,11 @@ export function FolderTree({
       onEdit={() => onEditFolder(folder)}
       onDelete={() => onDeleteFolder(folder.id)}
       onRename={(name) => onRenameFolder(folder.id, name)}
+      renderChildren={
+        (folder.children?.length ?? 0) > 0
+          ? () => folder.children!.map((child) => renderFolder(child, depth + 1))
+          : undefined
+      }
     />
   )
 
