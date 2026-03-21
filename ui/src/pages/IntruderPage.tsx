@@ -4,9 +4,8 @@ import { useIntruderStore } from '@/store/intruder'
 import { parseMarkers } from '@/lib/intruderAttack'
 import { SessionTabs } from '@/components/intruder/SessionTabs'
 import { RawEditor } from '@/components/intruder/RawEditor'
-import { AttackTypeSelector } from '@/components/intruder/AttackTypeSelector'
-import { PayloadSetPanel } from '@/components/intruder/PayloadSetPanel'
 import { AttackControls } from '@/components/intruder/AttackControls'
+import { AttackConfigModal } from '@/components/intruder/AttackConfigModal'
 import { ResultsTable } from '@/components/intruder/ResultsTable'
 import type { AttackType, PayloadConfig } from '@/store/intruder'
 
@@ -17,8 +16,7 @@ export function IntruderPage() {
     updateSession, startAttack, stopAttack, clearResults,
   } = useIntruderStore()
 
-  const [concurrency, setConcurrency] = useState(5)
-  const [activeMarker, setActiveMarker] = useState(0)
+  const [configOpen, setConfigOpen] = useState(false)
 
   const session = sessions.find((s) => s.id === activeSessionId) ?? null
   const markers = session ? parseMarkers(session.raw) : []
@@ -31,19 +29,14 @@ export function IntruderPage() {
         id, name, raw: '', requestId: 0,
         attackType: 'sniper' as AttackType,
         payloadSets: [],
+        concurrency: 5,
+        delay: 0,
         results: [],
         status: 'idle',
         progress: { done: 0, total: 0 },
       }],
       activeSessionId: id,
     }))
-  }
-
-  function handlePayloadChange(index: number, cfg: PayloadConfig) {
-    if (!session) return
-    const next = [...session.payloadSets]
-    next[index] = cfg
-    updateSession(session.id, { payloadSets: next })
   }
 
   if (sessions.length === 0) {
@@ -77,58 +70,26 @@ export function IntruderPage() {
 
       {session && (
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* LEFT panel: editor + config */}
-          <div className="w-[480px] shrink-0 flex flex-col gap-0 border-r border-border overflow-hidden">
-            {/* Raw editor */}
-            <div className="flex-1 min-h-0 p-3 flex flex-col">
+          {/* LEFT panel: raw editor only */}
+          <div className="w-[480px] shrink-0 flex flex-col border-r border-border overflow-hidden">
+            <div className="flex-1 min-h-0 p-3">
               <RawEditor
                 value={session.raw}
-                onChange={(raw) => {
-                  updateSession(session.id, { raw })
-                  setActiveMarker(0)
-                }}
+                onChange={(raw) => updateSession(session.id, { raw })}
               />
-            </div>
-
-            {/* Config section */}
-            <div className="border-t border-border p-3 flex flex-col gap-4 overflow-y-auto max-h-80">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Attack Type</p>
-                <AttackTypeSelector
-                  value={session.attackType}
-                  onChange={(attackType) => updateSession(session.id, { attackType })}
-                />
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Payload Sets
-                  {markers.length > 0 && (
-                    <span className="ml-1.5 text-primary font-normal normal-case">{markers.length} marker{markers.length !== 1 ? 's' : ''}</span>
-                  )}
-                </p>
-                <PayloadSetPanel
-                  markerCount={markers.length}
-                  payloadSets={session.payloadSets}
-                  activeMarker={activeMarker}
-                  onSelectMarker={setActiveMarker}
-                  onChange={handlePayloadChange}
-                />
-              </div>
             </div>
           </div>
 
           {/* RIGHT panel: controls + results */}
-          <div className="flex-1 min-w-0 flex flex-col gap-0 overflow-hidden">
-            {/* Attack controls */}
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {/* Attack controls bar */}
             <div className="p-3 border-b border-border shrink-0">
               <AttackControls
                 session={session}
-                concurrency={concurrency}
-                onConcurrencyChange={setConcurrency}
                 onStart={() => startAttack(session.id)}
                 onStop={() => stopAttack(session.id)}
                 onClear={() => clearResults(session.id)}
+                onConfigure={() => setConfigOpen(true)}
               />
             </div>
 
@@ -141,6 +102,20 @@ export function IntruderPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Config modal */}
+      {session && (
+        <AttackConfigModal
+          open={configOpen}
+          onClose={() => setConfigOpen(false)}
+          attackType={session.attackType}
+          payloadSets={session.payloadSets}
+          markerCount={markers.length}
+          concurrency={session.concurrency}
+          delay={session.delay}
+          onSave={(patch) => updateSession(session.id, patch)}
+        />
       )}
     </div>
   )

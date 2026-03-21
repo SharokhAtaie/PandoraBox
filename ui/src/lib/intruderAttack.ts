@@ -140,11 +140,12 @@ export async function runAttack(opts: {
   attackType: AttackType
   payloadSets: string[][]
   concurrency: number
+  delay: number       // ms between requests (0 = no delay)
   signal: AbortSignal
   onResult: (r: AttackResult) => void
   onProgress: (done: number, total: number) => void
 }): Promise<void> {
-  const { raw, requestId, attackType, payloadSets, concurrency, signal, onResult, onProgress } = opts
+  const { raw, requestId, attackType, payloadSets, concurrency, delay, signal, onResult, onProgress } = opts
 
   const markers = parseMarkers(raw)
   const variants = buildVariants(attackType, markers.length, payloadSets)
@@ -166,6 +167,14 @@ export async function runAttack(opts: {
 
   for (const payloadValues of variants) {
     if (signal.aborted) break
+
+    if (delay > 0 && index > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, delay)
+        signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')) }, { once: true })
+      }).catch(() => {})
+      if (signal.aborted) break
+    }
 
     const p = runOne(index++, payloadValues).then(() => { running.delete(p) })
     running.add(p)

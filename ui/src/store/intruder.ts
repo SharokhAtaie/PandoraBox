@@ -18,6 +18,8 @@ export interface IntruderSession {
   requestId: number
   attackType: AttackType
   payloadSets: PayloadConfig[]
+  concurrency: number
+  delay: number       // ms between requests
   results: AttackResult[]
   status: 'idle' | 'running' | 'paused' | 'done' | 'error'
   progress: { done: number; total: number }
@@ -56,6 +58,8 @@ export const useIntruderStore = create<IntruderState>((set, get) => ({
         requestId: req.id,
         attackType: 'sniper',
         payloadSets: [],
+        concurrency: 5,
+        delay: 0,
         results: [],
         status: 'idle',
         progress: { done: 0, total: 0 },
@@ -113,7 +117,8 @@ export const useIntruderStore = create<IntruderState>((set, get) => ({
         requestId: session.requestId,
         attackType: session.attackType,
         payloadSets,
-        concurrency: 5,
+        concurrency: session.concurrency,
+        delay: session.delay,
         signal: ac.signal,
         onResult: (result) => {
           set((s) => ({

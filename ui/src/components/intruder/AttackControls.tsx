@@ -1,16 +1,15 @@
-import { Play, Square, Trash2 } from 'lucide-react'
+import { Play, Square, Trash2, Settings2 } from 'lucide-react'
 import type { IntruderSession } from '@/store/intruder'
 
 interface Props {
   session: IntruderSession
-  concurrency: number
-  onConcurrencyChange: (v: number) => void
   onStart: () => void
   onStop: () => void
   onClear: () => void
+  onConfigure: () => void
 }
 
-export function AttackControls({ session, concurrency, onConcurrencyChange, onStart, onStop, onClear }: Props) {
+export function AttackControls({ session, onStart, onStop, onClear, onConfigure }: Props) {
   const { status, progress } = session
   const running = status === 'running'
   const percent = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
@@ -25,7 +24,7 @@ export function AttackControls({ session, concurrency, onConcurrencyChange, onSt
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Play size={13} />
-          {status === 'done' ? 'Re-run' : 'Start'}
+          {status === 'done' ? 'Re-run' : 'Start Attack'}
         </button>
 
         {running && (
@@ -46,23 +45,37 @@ export function AttackControls({ session, concurrency, onConcurrencyChange, onSt
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Trash2 size={13} />
-          Clear
+          Clear Results
         </button>
 
-        <div className="flex items-center gap-2 ml-auto">
-          <span className="text-xs text-muted-foreground">Concurrency</span>
-          <input
-            type="range"
-            min={1}
-            max={20}
-            value={concurrency}
-            onChange={(e) => onConcurrencyChange(Number(e.target.value))}
-            className="w-24 accent-primary"
-          />
-          <span className="text-xs text-foreground w-4 text-right">{concurrency}</span>
-        </div>
+        <button
+          type="button"
+          disabled={running}
+          onClick={onConfigure}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors ml-auto"
+        >
+          <Settings2 size={13} />
+          Configure Attack
+        </button>
       </div>
 
+      {/* Status line */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        {session.concurrency > 1 && (
+          <span>{session.concurrency}× concurrency</span>
+        )}
+        {session.delay > 0 && (
+          <span>{session.delay}ms delay</span>
+        )}
+        {status === 'error' && <span className="text-red-400">Attack failed</span>}
+        {status === 'done' && (
+          <span className="text-emerald-400">
+            Done — {session.results.length.toLocaleString()} result{session.results.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Progress bar */}
       {(running || status === 'done') && progress.total > 0 && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -76,15 +89,6 @@ export function AttackControls({ session, concurrency, onConcurrencyChange, onSt
             />
           </div>
         </div>
-      )}
-
-      {status === 'error' && (
-        <p className="text-xs text-red-400">Attack failed. Check console for details.</p>
-      )}
-      {status === 'done' && (
-        <p className="text-xs text-emerald-400">
-          Done — {session.results.length.toLocaleString()} result{session.results.length !== 1 ? 's' : ''}
-        </p>
       )}
     </div>
   )
