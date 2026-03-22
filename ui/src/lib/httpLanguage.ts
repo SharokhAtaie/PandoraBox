@@ -54,14 +54,22 @@ export function registerHttpLanguage(monaco: typeof Monaco): void {
       cookie_value: [
         // Cookie/attribute name (must be followed by '=')
         [/[^=;\s][^=;]*(?==)/, 'cookie.name'],
-        [/=/, 'cookie.eq'],
-        // Cookie value before ';'
+        // '=' separator — switch to value part (values may contain '=' e.g. base64)
+        [/=/, { token: 'cookie.eq', next: '@cookie_val_part' }],
+        // Bare flag without '=' (e.g. Secure, HttpOnly) before ';'
         [/[^;\n\r]+(?=;)/, 'cookie.value'],
-        // Last value on line (no trailing ';') — returns to headers
+        // Bare flag at end of line
         [/[^;\n\r]+/, { token: 'cookie.value', next: '@headers' }],
-        // Semicolon separator
         [/;[ \t]*/, 'cookie.sep'],
-        // Safety: bare end-of-line
+        [/$/, { token: '', next: '@headers' }],
+      ],
+
+      // ── Cookie value part (after '=', allows '=' inside value) ───────────────
+      cookie_val_part: [
+        // Value up to ';' — can contain '=' (base64 padding etc.)
+        [/[^;\n\r]+(?=;)/, { token: 'cookie.value', next: '@cookie_value' }],
+        // Value at end of line
+        [/[^;\n\r]+/, { token: 'cookie.value', next: '@headers' }],
         [/$/, { token: '', next: '@headers' }],
       ],
 
