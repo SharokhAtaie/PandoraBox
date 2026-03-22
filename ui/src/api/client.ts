@@ -319,6 +319,7 @@ export const api = {
     toggle: (enabled: boolean) => put<{ enabled: boolean }>('/intercept/toggle', { enabled }),
     forward: (id: number) => post<{ success: boolean }>(`/intercept/forward/${id}`),
     forwardAll: () => post<{ forwarded: number }>('/intercept/forward-all'),
+    dropAll: () => post<{ dropped: number }>('/intercept/drop-all'),
     drop: (id: number) => post<{ success: boolean }>(`/intercept/drop/${id}`),
     modify: (id: number, raw: string) => post<{ success: boolean }>(`/intercept/modify/${id}`, { raw }),
     getFilter: () => get<InterceptFilter>('/intercept/filter'),

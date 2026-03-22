@@ -6,7 +6,7 @@ import { useProxyStore } from '@/store/proxy'
 import { useThemeStore } from '@/store/theme'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { InterceptFilterModal } from './InterceptFilterModal'
-import { Shield, ShieldOff, Check, X, Filter, ChevronsRight } from 'lucide-react'
+import { Shield, ShieldOff, Check, X, Filter, ChevronsRight, Trash2 } from 'lucide-react'
 import { cn, displayHost } from '@/lib/utils'
 import { subscribeShortcutAction } from '@/lib/shortcuts'
 import { useNavigate } from 'react-router-dom'
@@ -118,6 +118,15 @@ export function InterceptPanel() {
     await fetchQueue()
   }
 
+  function pickNext(resolvedId: number, currentQueue: Request[]): number | null {
+    const idx = currentQueue.findIndex((r) => r.id === resolvedId)
+    const remaining = currentQueue.filter((r) => r.id !== resolvedId)
+    if (remaining.length === 0) return null
+    // prefer the item that was after the resolved one; fall back to the last item
+    const next = remaining[Math.min(idx, remaining.length - 1)]
+    return next?.id ?? null
+  }
+
   async function forward(id: number) {
     const content = editContentRef.current
     if (content) {
@@ -125,14 +134,18 @@ export function InterceptPanel() {
     } else {
       await api.intercept.forward(id)
     }
-    setSelectedId(null)
-    await fetchQueue()
+    const updated = await api.intercept.queue()
+    const newQueue = updated.queue || []
+    setQueue(newQueue)
+    setSelectedId(pickNext(id, queue))
   }
 
   async function drop(id: number) {
     await api.intercept.drop(id)
-    setSelectedId(null)
-    await fetchQueue()
+    const updated = await api.intercept.queue()
+    const newQueue = updated.queue || []
+    setQueue(newQueue)
+    setSelectedId(pickNext(id, queue))
   }
 
   async function applyFilter(f: InterceptFilter) {
@@ -194,15 +207,24 @@ export function InterceptPanel() {
           )}
         </button>
 
-        {/* Forward all */}
+        {/* Forward all / Drop all */}
         {queue.length > 0 && (
-          <button
-            onClick={() => api.intercept.forwardAll().then(fetchQueue).catch(console.error)}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
-          >
-            <ChevronsRight size={13} />
-            Forward All
-          </button>
+          <>
+            <button
+              onClick={() => api.intercept.forwardAll().then(fetchQueue).catch(console.error)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
+            >
+              <ChevronsRight size={13} />
+              Forward All
+            </button>
+            <button
+              onClick={() => api.intercept.dropAll().then(() => { setSelectedId(null); return fetchQueue() }).catch(console.error)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-colors"
+            >
+              <Trash2 size={13} />
+              Drop All
+            </button>
+          </>
         )}
 
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
