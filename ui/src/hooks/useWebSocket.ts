@@ -16,7 +16,7 @@ interface WSEvent {
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const { prependRequest, updateRequest, removeRequest, clearRequests, setStatus, syncProject, setRequests, appendWsFrame } = useProxyStore()
+  const { prependRequest, updateRequest, removeRequest, clearRequests, setStatus, syncProject, setRequests, setSelectedRequestId, appendWsFrame } = useProxyStore()
   const setFlows = useFlowsStore((s) => s.setFlows)
   const { upsertMember, removeMember, setMembers, setSyncStatus } = useTeamStore()
   const { upsertFolder, removeFolder, setFolders, upsertItem, removeItem, setItemsForFolder } = useOrganizerStore()
@@ -61,9 +61,16 @@ export function useWebSocket() {
       syncProject(project)
       setFlows(project.flows ?? [])
     } else if (evt.type === 'project.switched') {
+      // Capture path before the async fetch so we can detect a real project change.
+      const prevPath = useProxyStore.getState().project?.path
       api.project.get().then((p) => {
         syncProject(p)
-        setRequests([])
+        // Only clear history + selection when the project path actually changed
+        // (avoids a race where sidebar already repopulated the list via useRequests).
+        if (prevPath !== p.path) {
+          setRequests([])
+          setSelectedRequestId(null)
+        }
         setFlows(p.flows ?? [])
       }).catch(console.error)
     } else if (evt.type === 'websocket.frame') {

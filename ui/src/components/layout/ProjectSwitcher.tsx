@@ -15,6 +15,7 @@ export function ProjectSwitcher() {
   const project = useProxyStore((s) => s.project)
   const setProject = useProxyStore((s) => s.setProject)
   const setRequests = useProxyStore((s) => s.setRequests)
+  const setSelectedRequestId = useProxyStore((s) => s.setSelectedRequestId)
 
   useEffect(() => {
     if (open) {
@@ -37,6 +38,7 @@ export function ProjectSwitcher() {
     if (!p) return
     setProject(p)
     setRequests([])
+    setSelectedRequestId(null)
     setOpen(false)
   }
 

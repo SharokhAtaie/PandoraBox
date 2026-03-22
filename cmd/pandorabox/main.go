@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/hamedsj5/pandorabox/internal/api"
@@ -109,9 +110,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 			projectMgr, err = project.TempProject()
 		} else {
 			projectMgr, err = project.OpenProject(projectPath)
+			if err != nil {
+				// project.json missing — create a new project at this path
+				// (handles the "New Project…" flow in the launcher).
+				slog.Info("project.json not found, creating new project", "path", projectPath)
+				projectMgr, err = project.CreateProject(projectPath, filepath.Base(projectPath))
+			}
 		}
 		if err != nil {
-			slog.Warn("Failed to open specified project, falling back to temp", "path", projectPath, "err", err)
+			slog.Warn("Failed to open/create specified project, falling back to temp", "path", projectPath, "err", err)
 		}
 	}
 	if projectMgr == nil && appCfg.LastProject != "" {
