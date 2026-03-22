@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Editor, { type BeforeMount } from '@monaco-editor/react'
+import { registerHttpLanguage, httpTokenRules } from '@/lib/httpLanguage'
 import { api } from '@/api/client'
 import type { InterceptFilter, Request } from '@/api/client'
 import { useProxyStore } from '@/store/proxy'
@@ -157,17 +158,22 @@ export function InterceptPanel() {
   const isFilterActive = !!(interceptFilter.host || interceptFilter.method || interceptFilter.path)
 
   const defineTheme: BeforeMount = (monaco) => {
-    if (mode === 'dark') {
-      monaco.editor.defineTheme('intercept-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [],
-        colors: { 'editor.background': '#0d1117' },
-      })
-    }
+    registerHttpLanguage(monaco)
+    monaco.editor.defineTheme('intercept-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: httpTokenRules('dark'),
+      colors: { 'editor.background': '#0d1117' },
+    })
+    monaco.editor.defineTheme('intercept-light', {
+      base: 'vs',
+      inherit: true,
+      rules: httpTokenRules('light'),
+      colors: {},
+    })
   }
 
-  const editorTheme = mode === 'dark' ? 'intercept-dark' : 'vs'
+  const editorTheme = mode === 'dark' ? 'intercept-dark' : 'intercept-light'
 
   return (
     <div className="flex flex-col h-full">
@@ -298,7 +304,7 @@ export function InterceptPanel() {
               <div className="flex-1 min-h-0">
                 <Editor
                   height="100%"
-                  language="plaintext"
+                  language="http-request"
                   value={editContent}
                   onChange={(v) => setEditContent(v ?? '')}
                   theme={editorTheme}

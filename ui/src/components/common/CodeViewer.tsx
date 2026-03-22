@@ -1,6 +1,7 @@
 import Editor, { useMonaco, type BeforeMount, type OnMount } from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
 import { useThemeStore } from '@/store/theme'
+import { registerHttpLanguage, httpTokenRules } from '@/lib/httpLanguage'
 
 interface CodeViewerProps {
   value: string
@@ -31,6 +32,7 @@ export function CodeViewer({
   const resolvedTypography = getResolvedTypography(fontSize)
   const [editorHeight, setEditorHeight] = useState<number>(minHeight)
   const applyThemeDefinition = (targetMonaco: Parameters<NonNullable<BeforeMount>>[0]) => {
+    registerHttpLanguage(targetMonaco)
     targetMonaco.editor.defineTheme(themeName, buildMonacoTheme(mode))
   }
 
@@ -170,7 +172,7 @@ function buildMonacoTheme(mode: 'dark' | 'light') {
   return {
     base: mode === 'dark' ? 'vs-dark' : 'vs',
     inherit: true,
-    rules: [],
+    rules: httpTokenRules(mode),
     colors: {
       'editor.background': card,
       'editor.foreground': foreground,
