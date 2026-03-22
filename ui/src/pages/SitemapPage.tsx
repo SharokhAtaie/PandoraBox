@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ChevronDown, Filter, Globe, Network, Waypoints } from 'lucide-react'
 import { useRequests } from '@/hooks/useRequests'
 import { useProxyStore } from '@/store/proxy'
+import type { RequestFilters } from '@/store/proxy'
 import { FilterModal } from '@/components/history/FilterModal'
 import { RequestInspector } from '@/components/inspector/RequestInspector'
 import { RequestWorkspaceLayout } from '@/components/layout/RequestWorkspaceLayout'
@@ -37,12 +38,28 @@ function StatCard({
   )
 }
 
+const SITEMAP_DEFAULT_FILTERS: RequestFilters = {
+  search: '',
+  method: '',
+  host: '',
+  extensionShow: '',
+  extensionHide: '',
+  contentTypeShow: '',
+  contentTypeHide: '',
+  statusCodes: [],
+  negativeSearch: false,
+  caseInsensitive: true,
+  useRegex: false,
+  searchScope: [],
+  inScopeOnly: false,
+}
+
 export function SitemapPage() {
   useRequests()
 
   const requests = useProxyStore((state) => state.requests)
-  const filters = useProxyStore((state) => state.filters)
   const project = useProxyStore((state) => state.project)
+  const [sitemapFilters, setSitemapFilters] = useState<RequestFilters>(SITEMAP_DEFAULT_FILTERS)
   const selectedRequestId = useProxyStore((state) => state.selectedRequestId)
   const setSelectedRequestId = useProxyStore((state) => state.setSelectedRequestId)
   const inspectorPosition = useWorkspaceStore((state) => state.inspectorPosition)
@@ -57,9 +74,9 @@ export function SitemapPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
 
-  const filteredRequests = useMemo(() => filterRequests(requests, filters), [requests, filters])
+  const filteredRequests = useMemo(() => filterRequests(requests, sitemapFilters), [requests, sitemapFilters])
   const tree = useMemo(() => buildSitemapTree(filteredRequests), [filteredRequests])
-  const activeFilterCount = countActiveFilters(filters)
+  const activeFilterCount = countActiveFilters(sitemapFilters)
   const hostCount = tree.length
   const routeCount = useMemo(() => countUniqueRoutes(filteredRequests), [filteredRequests])
   const responseCount = filteredRequests.filter((request) => request.response).length
@@ -313,7 +330,12 @@ export function SitemapPage() {
         </div>
       </div>
 
-      <FilterModal isOpen={filterModalOpen} onClose={() => setFilterModalOpen(false)} />
+      <FilterModal
+        isOpen={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        externalFilters={sitemapFilters}
+        onApply={setSitemapFilters}
+      />
     </div>
   )
 }

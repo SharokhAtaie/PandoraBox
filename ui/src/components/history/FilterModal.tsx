@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { defaultFilters, useProxyStore } from '@/store/proxy'
+import type { RequestFilters } from '@/store/proxy'
 import { cn } from '@/lib/utils'
 import { X, Filter, Check } from 'lucide-react'
 
@@ -86,10 +87,30 @@ function defaultLocalFilters(): LocalFilters {
   return fromStore(defaultFilters)
 }
 
+const emptyLocalFilters: LocalFilters = {
+  search: '',
+  host: '',
+  extensionShow: '',
+  extensionShowEnabled: false,
+  extensionHide: '',
+  extensionHideEnabled: false,
+  contentTypeShow: '',
+  contentTypeShowEnabled: false,
+  contentTypeHide: '',
+  contentTypeHideEnabled: false,
+  statusCodes: [],
+  negativeSearch: false,
+  caseInsensitive: true,
+  useRegex: false,
+  searchScope: [],
+  inScopeOnly: false,
+}
+
 // Strip enabled flags before writing to store
-function resolve(l: LocalFilters) {
+function resolve(l: LocalFilters): RequestFilters {
   return {
     search:          l.search,
+    method:          '',
     host:            l.host,
     extensionShow:   l.extensionShowEnabled  ? l.extensionShow   : '',
     extensionHide:   l.extensionHideEnabled  ? l.extensionHide   : '',
@@ -117,14 +138,24 @@ function countForTab(tab: Tab, f: LocalFilters): number {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function FilterModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { filters, setFilters, resetFilters } = useProxyStore()
+interface FilterModalProps {
+  isOpen: boolean
+  onClose: () => void
+  /** When provided, the modal operates on this external filter state instead of the global store. */
+  externalFilters?: RequestFilters
+  /** Called instead of store setFilters when externalFilters is provided. */
+  onApply?: (f: RequestFilters) => void
+}
+
+export function FilterModal({ isOpen, onClose, externalFilters, onApply }: FilterModalProps) {
+  const { filters: storeFilters, setFilters, resetFilters } = useProxyStore()
+  const sourceFilters = externalFilters ?? storeFilters
   const backdropRef = useRef<HTMLDivElement>(null)
   const [activeTab, setActiveTab] = useState<Tab>('search')
-  const [local, setLocal] = useState<LocalFilters>(() => fromStore(filters))
+  const [local, setLocal] = useState<LocalFilters>(() => fromStore(sourceFilters))
 
   useEffect(() => {
-    if (isOpen) setLocal(fromStore(filters))
+    if (isOpen) setLocal(fromStore(sourceFilters))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -167,8 +198,14 @@ export function FilterModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     })
   }
 
-  const handleApply = () => { setFilters(resolve(local)); onClose() }
-  const handleReset = () => { resetFilters(); setLocal(defaultLocalFilters()) }
+  const handleApply = () => {
+    const resolved = resolve(local)
+    if (onApply) { onApply(resolved) } else { setFilters(resolved) }
+    onClose()
+  }
+  const handleReset = () => {
+    if (onApply) { setLocal(emptyLocalFilters) } else { resetFilters(); setLocal(defaultLocalFilters()) }
+  }
   const handleBackdrop = (e: React.MouseEvent) => { if (e.target === backdropRef.current) onClose() }
 
   const totalActive = (['search', 'request', 'response'] as Tab[]).reduce(
