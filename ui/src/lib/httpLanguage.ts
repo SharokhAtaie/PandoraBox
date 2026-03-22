@@ -39,10 +39,30 @@ export function registerHttpLanguage(monaco: typeof Monaco): void {
       headers: [
         // Blank line → body
         [/^[ \t]*$/, { token: '', next: '@body' }],
-        // Header-name: colon  value
+        // Cookie / Set-Cookie — special value tokenization
+        [/^(Cookie|Set-Cookie)(\s*:\s*)/, [
+          { token: 'http.header.name' },
+          { token: 'http.header.colon', next: '@cookie_value' },
+        ]],
+        // Generic header-name: colon  value
         [/^([\w\-]+)(\s*:\s*)/, ['http.header.name', 'http.header.colon']],
         // Rest of header line (value, or folded continuation)
         [/.+$/, 'http.header.value'],
+      ],
+
+      // ── Cookie value: name=value; name2=value2 ───────────────────────────────
+      cookie_value: [
+        // Cookie/attribute name (must be followed by '=')
+        [/[^=;\s][^=;]*(?==)/, 'cookie.name'],
+        [/=/, 'cookie.eq'],
+        // Cookie value before ';'
+        [/[^;\n\r]+(?=;)/, 'cookie.value'],
+        // Last value on line (no trailing ';') — returns to headers
+        [/[^;\n\r]+/, { token: 'cookie.value', next: '@headers' }],
+        // Semicolon separator
+        [/;[ \t]*/, 'cookie.sep'],
+        // Safety: bare end-of-line
+        [/$/, { token: '', next: '@headers' }],
       ],
 
       // ── Body — auto-detects JSON / XML / form-urlencoded ────────────────────
@@ -136,6 +156,10 @@ export function httpTokenRules(mode: 'dark' | 'light'): Monaco.editor.ITokenThem
       { token: 'form.eq',             foreground: '8b949e' },
       { token: 'form.value',          foreground: 'a5d6ff' },
       { token: 'form.sep',            foreground: '8b949e' },
+      { token: 'cookie.name',         foreground: 'ffa657' },
+      { token: 'cookie.eq',           foreground: '8b949e' },
+      { token: 'cookie.value',        foreground: 'a5d6ff' },
+      { token: 'cookie.sep',          foreground: '8b949e' },
       { token: 'tag',                 foreground: '7ee787' },
       { token: 'metatag',             foreground: '8b949e' },
       { token: 'attribute.name',      foreground: 'ffa657' },
@@ -162,6 +186,10 @@ export function httpTokenRules(mode: 'dark' | 'light'): Monaco.editor.ITokenThem
     { token: 'form.eq',             foreground: '6e7781' },
     { token: 'form.value',          foreground: '0a3069' },
     { token: 'form.sep',            foreground: '6e7781' },
+    { token: 'cookie.name',         foreground: '953800' },
+    { token: 'cookie.eq',           foreground: '6e7781' },
+    { token: 'cookie.value',        foreground: '0a3069' },
+    { token: 'cookie.sep',          foreground: '6e7781' },
     { token: 'tag',                 foreground: '116329' },
     { token: 'metatag',             foreground: '6e7781' },
     { token: 'attribute.name',      foreground: '953800' },

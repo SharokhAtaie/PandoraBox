@@ -47,6 +47,13 @@ export function InterceptPanel() {
     return () => clearInterval(t)
   }, [])
 
+  // Auto-select the first request when the queue goes from empty to non-empty
+  useEffect(() => {
+    if (selectedId === null && queue.length > 0) {
+      setSelectedId(queue[0].id)
+    }
+  }, [queue, selectedId])
+
   // Populate editor when selection changes
   useEffect(() => {
     if (selectedId === null) {
