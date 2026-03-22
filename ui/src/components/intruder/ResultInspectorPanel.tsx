@@ -8,6 +8,7 @@ import { CodeViewer } from '@/components/common/CodeViewer'
 import { displayHost } from '@/lib/utils'
 import { decodeBodyForDisplay, type DecodedBody } from '@/lib/httpBodies'
 import { presentBody, type BodyPresentation } from '@/lib/bodyPresentation'
+import { HeadersView, parseHeadersJSON } from '@/components/common/HeadersView'
 import type { AttackResult } from '@/store/intruder'
 
 type Tab = 'request' | 'response'
@@ -18,17 +19,6 @@ interface Props {
   onClose: () => void
 }
 
-function parseHeadersToText(raw: string | undefined): string {
-  if (!raw) return ''
-  try {
-    const obj = JSON.parse(raw) as Record<string, string | string[]>
-    return Object.entries(obj)
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-      .join('\n')
-  } catch {
-    return raw
-  }
-}
 
 export function ResultInspectorPanel({ result, markerCount, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('response')
@@ -82,8 +72,10 @@ export function ResultInspectorPanel({ result, markerCount, onClose }: Props) {
 
   const req = replay?.request ?? null
   const res = replay?.response ?? null
-  const reqHeadersText = req ? `Host: ${displayHost(req.host, req.scheme)}\n${parseHeadersToText(req.headers)}`.trim() : ''
-  const resHeadersText = parseHeadersToText(res?.headers)
+  const reqHeaders = req
+    ? { Host: [displayHost(req.host, req.scheme)], ...parseHeadersJSON(req.headers) }
+    : {}
+  const resHeaders = parseHeadersJSON(res?.headers)
 
   return (
     <div className="flex flex-col h-full border-l border-border bg-card overflow-hidden">
@@ -183,7 +175,7 @@ export function ResultInspectorPanel({ result, markerCount, onClose }: Props) {
               {/* Headers */}
               <div className="px-3 pt-3 pb-2">
                 <SectionLabel>Headers</SectionLabel>
-                <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap break-all leading-[1.7] select-text">{reqHeadersText}</pre>
+                <HeadersView headers={reqHeaders} />
               </div>
               {/* Body */}
               {reqBody?.text ? (
@@ -216,7 +208,7 @@ export function ResultInspectorPanel({ result, markerCount, onClose }: Props) {
               {/* Headers */}
               <div className="px-3 pt-3 pb-2">
                 <SectionLabel>Headers</SectionLabel>
-                <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap break-all leading-[1.7] select-text">{resHeadersText}</pre>
+                <HeadersView headers={resHeaders} />
               </div>
               {/* Body */}
               {resBody?.text ? (

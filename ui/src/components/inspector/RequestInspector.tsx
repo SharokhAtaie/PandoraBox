@@ -15,6 +15,7 @@ import { displayHost } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { decodeBodyBytes, decodeBodyForDisplay, type DecodedBody, type RawBody } from '@/lib/httpBodies'
 import { presentBody } from '@/lib/bodyPresentation'
+import { HeadersView } from '@/components/common/HeadersView'
 import { useWorkspaceStore } from '@/store/workspace'
 import { parseRequestTags, REQUEST_TAG_HIGHLIGHTED } from '@/lib/requestTags'
 import { toast } from 'sonner'
@@ -205,7 +206,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {activeTab === 'request' ? (
           <>
-            <HeadersPanel headers={headers} />
+            <HeadersView headers={headers} />
             {requestBody && <BodySection title="Body" body={requestBody} />}
           </>
         ) : req.response ? (
@@ -215,7 +216,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
               <span className="text-muted-foreground font-mono text-xs">{req.response.status_text}</span>
               <span className="ml-auto text-muted-foreground text-xs">{req.response.duration_ms}ms · {formatBytes(req.response.size_bytes)}</span>
             </div>
-            <HeadersPanel headers={respHeaders} />
+            <HeadersView headers={respHeaders} />
             {responseBody && <BodySection title="Body" body={responseBody} />}
           </>
         ) : (
@@ -347,22 +348,6 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
   )
 }
 
-function HeadersPanel({ headers }: { headers: Record<string, string[]> }) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wide">Headers</div>
-      <div className="space-y-1">
-        {Object.entries(headers).map(([k, vs]) => (
-          <div key={k} className="font-mono text-xs">
-            <span className="text-primary">{k}</span>
-            <span className="text-muted-foreground">: </span>
-            <span className="text-foreground">{vs.join(', ')}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function BodySection({ title, body }: { title: string; body: DecodedBody }) {
   const presentation = presentBody(body)
