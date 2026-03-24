@@ -334,6 +334,8 @@ export const api = {
       raw?: string
     }) => post<Replay>('/replay', body),
     get: (id: number) => get<Replay>(`/replay/${id}`),
+    list: (params?: { limit?: number; offset?: number }) =>
+      get<{ replays: Replay[]; total: number }>('/replays', params as Record<string, string | number>),
   },
   ca: {
     certUrl: () => BASE + '/ca/cert',

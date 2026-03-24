@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { FolderOpen, FolderPlus, Save, ChevronDown, Clock } from 'lucide-react'
+import { FolderOpen, FolderPlus, Save, ChevronDown, Clock, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api/client'
 import { useProxyStore } from '@/store/proxy'
@@ -9,6 +9,7 @@ export function ProjectSwitcher() {
   const [recent, setRecent] = useState<{ path: string; name: string; exists: boolean }[]>([])
   const [pathInput, setPathInput] = useState('')
   const [nameInput, setNameInput] = useState('')
+  const [renameInput, setRenameInput] = useState('')
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -22,6 +23,10 @@ export function ProjectSwitcher() {
       api.project.recent().then(setRecent).catch(console.error)
     }
   }, [open])
+
+  useEffect(() => {
+    setRenameInput(project?.name ?? '')
+  }, [project?.name])
 
   // Close on outside click
   useEffect(() => {
@@ -112,6 +117,21 @@ export function ProjectSwitcher() {
     }
   }
 
+  async function handleRenameProject() {
+    if (!project) return
+    const name = renameInput.trim()
+    if (!name) return
+    setLoading(true)
+    try {
+      const updated = await api.project.update({ name })
+      setProject(updated)
+    } catch (e) {
+      console.error('Failed to rename project:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div ref={ref} className="relative px-3 mb-2">
       <button
@@ -191,6 +211,32 @@ export function ProjectSwitcher() {
                 onChange={(e) => setNameInput(e.target.value)}
                 className="w-full text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
               />
+            </div>
+          )}
+
+          {/* Rename current project */}
+          {project && (
+            <div className="px-3 pb-2 space-y-2 border-t border-border pt-2">
+              <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                Current Project Name
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={renameInput}
+                  onChange={(e) => setRenameInput(e.target.value)}
+                  className="w-full text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                  placeholder="Project name"
+                />
+                <button
+                  onClick={handleRenameProject}
+                  disabled={loading || !renameInput.trim() || renameInput.trim() === project.name}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs border border-border text-foreground hover:bg-muted disabled:opacity-40"
+                >
+                  <Pencil size={12} />
+                  Save
+                </button>
+              </div>
             </div>
           )}
 

@@ -62,3 +62,20 @@ func (s *Server) getReplay(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, replay)
 }
+
+func (s *Server) listReplays(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+
+	replays, total, err := s.getDB().ListReplays(limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"replays": replays,
+		"total":   total,
+	})
+}

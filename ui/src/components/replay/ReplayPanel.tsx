@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
+import type { editor as MonacoEditor } from 'monaco-editor'
 import { api } from '@/api/client'
 import type { Replay, Request } from '@/api/client'
 import { useProxyStore, type ReplayQueueItem } from '@/store/proxy'
 import { useReplayStore } from '@/store/replay'
+import { useThemeStore } from '@/store/theme'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { CodeViewer } from '@/components/common/CodeViewer'
+import { registerHttpLanguage, httpTokenRules } from '@/lib/httpLanguage'
 import { Send, RotateCcw, Trash2, Plus, FileCode2, ChevronLeft, ChevronRight, CopyPlus, Paperclip } from 'lucide-react'
 import { subscribeShortcutAction } from '@/lib/shortcuts'
 import { decodeBodyForDisplay, type DecodedBody } from '@/lib/httpBodies'
@@ -16,6 +20,8 @@ import { cn, displayHost } from '@/lib/utils'
 export function ReplayPanel() {
   const { replayQueue, removeFromReplay, duplicateReplayItem, clearReplay } = useProxyStore()
   const autoContentLength = useReplayStore((state) => state.autoContentLength)
+  const mode = useThemeStore((state) => state.mode)
+  const fontSize = useThemeStore((state) => state.fontSize)
 
   const [selectedQueueId, setSelectedQueueId] = useState<number | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
@@ -26,7 +32,7 @@ export function ReplayPanel() {
   const [sendError, setSendError] = useState('')
   const [decodedReplayBody, setDecodedReplayBody] = useState<DecodedBody | null>(null)
   const [packetHistory, setPacketHistory] = useState<Record<number, { entries: string[]; index: number }>>({})
-  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const selectedEntry = replayQueue.find((entry) => entry.queueId === selectedQueueId) ?? null
@@ -118,25 +124,17 @@ export function ReplayPanel() {
       setSendError('')
       return
     }
-
-    const selectionStart = target.selectionStart ?? rawRequest.length
-    const selectionEnd = target.selectionEnd ?? rawRequest.length
-
-    const nextRaw =
-      rawRequest.slice(0, selectionStart) +
-      content +
-      rawRequest.slice(selectionEnd)
-
-    setRawRequest(nextRaw)
+    const model = target.getModel()
+    const selection = target.getSelection()
+    if (!model || !selection) {
+      setRawRequest((current) => current + content)
+      setSendError('')
+      return
+    }
+    target.executeEdits('insert-file', [{ range: selection, text: content, forceMoveMarkers: true }])
+    setRawRequest(model.getValue())
     setSendError('')
-
-    requestAnimationFrame(() => {
-      const editor = editorRef.current
-      if (!editor) return
-      const nextCursor = selectionStart + content.length
-      editor.focus()
-      editor.setSelectionRange(nextCursor, nextCursor)
-    })
+    target.focus()
   }
 
   function handleInsertFileClick() {
@@ -177,7 +175,7 @@ export function ReplayPanel() {
             },
           }
         })
-        setReplay(null)
+        setReplay(selectedEntry.replay ?? null)
       })
       .catch((error) => {
         console.error(error)
@@ -227,6 +225,28 @@ export function ReplayPanel() {
     if (!selectedReq) return ''
     return `${displayHost(selectedReq.host, selectedReq.scheme)}${selectedReq.path}${selectedReq.query ? `?${selectedReq.query}` : ''}`
   }, [selectedReq])
+
+  const defineTheme: BeforeMount = (monaco) => {
+    registerHttpLanguage(monaco)
+    monaco.editor.defineTheme('replay-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: httpTokenRules('dark'),
+      colors: { 'editor.background': '#0d1117' },
+    })
+    monaco.editor.defineTheme('replay-light', {
+      base: 'vs',
+      inherit: true,
+      rules: httpTokenRules('light'),
+      colors: {},
+    })
+  }
+
+  const onMount: OnMount = (editor) => {
+    editorRef.current = editor
+  }
+
+  const editorTheme = mode === 'dark' ? 'replay-dark' : 'replay-light'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -384,14 +404,37 @@ export function ReplayPanel() {
                     Loading request packet...
                   </div>
                 ) : (
-                  <textarea
-                    ref={editorRef}
-                    value={rawRequest}
-                    onChange={(event) => setRawRequest(event.target.value)}
-                    spellCheck={false}
-                    className="min-h-[420px] w-full resize-y rounded-2xl border border-border bg-card/70 px-4 py-4 font-mono text-sm leading-6 text-foreground outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-                    style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-base)' }}
-                  />
+                  <div className="overflow-hidden rounded-2xl border border-border bg-card/70">
+                    <Editor
+                      height="420px"
+                      language="http-request"
+                      value={rawRequest}
+                      onChange={(value) => setRawRequest(value ?? '')}
+                      theme={editorTheme}
+                      beforeMount={defineTheme}
+                      onMount={onMount}
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        fontSize,
+                        fontFamily: 'var(--font-mono, monospace)',
+                        padding: { top: 12, bottom: 12 },
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        renderLineHighlight: 'line',
+                        overviewRulerLanes: 0,
+                        lineDecorationsWidth: 6,
+                        glyphMargin: false,
+                        scrollbar: {
+                          verticalScrollbarSize: 8,
+                          horizontalScrollbarSize: 8,
+                          alwaysConsumeMouseWheel: false,
+                        },
+                        contextmenu: true,
+                      }}
+                    />
+                  </div>
                 )}
               </div>
 

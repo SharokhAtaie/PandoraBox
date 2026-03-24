@@ -17,6 +17,7 @@ export function MainLayout() {
   useTeamSync()
   const setStatus = useProxyStore((s) => s.setStatus)
   const syncProject = useProxyStore((s) => s.syncProject)
+  const hydrateReplayQueue = useProxyStore((s) => s.hydrateReplayQueue)
   const setFlows = useFlowsStore((s) => s.setFlows)
   const toggleConsole = useConsoleStore((s) => s.toggle)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -27,8 +28,11 @@ export function MainLayout() {
     api.project.get().then((p) => {
       syncProject(p)
       setFlows(p.flows ?? [])
+      api.replay.list({ limit: 100, offset: 0 })
+        .then((result) => hydrateReplayQueue(result.replays ?? []))
+        .catch(console.error)
     }).catch(console.error)
-  }, [syncProject, setFlows])
+  }, [syncProject, setFlows, hydrateReplayQueue])
 
   // Poll proxy status
   useEffect(() => {

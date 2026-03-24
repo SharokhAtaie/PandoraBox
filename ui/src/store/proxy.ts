@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Request, ProxyStatus, ProjectInfo, FilterConfig, WebSocketFrame } from '@/api/client'
+import type { Request, Replay, ProxyStatus, ProjectInfo, FilterConfig, WebSocketFrame } from '@/api/client'
 
 export type { FilterConfig }
 
@@ -8,6 +8,7 @@ export type RequestFilters = FilterConfig
 export interface ReplayQueueItem {
   queueId: number
   request: Request
+  replay?: Replay
 }
 
 const defaultHiddenExtensions = [
@@ -105,7 +106,8 @@ interface ProxyStore {
   // Replay queue (requests explicitly sent to replay)
   replayQueue: ReplayQueueItem[]
   replayAttentionTick: number
-  addToReplay: (req: Request) => void
+  addToReplay: (req: Request, replay?: Replay) => void
+  hydrateReplayQueue: (replays: Replay[]) => void
   duplicateReplayItem: (queueId: number) => void
   removeFromReplay: (queueId: number) => void
   removeRequestFromReplay: (requestId: number) => void
@@ -185,16 +187,39 @@ export const useProxyStore = create<ProxyStore>((set) => ({
 
   replayQueue: [],
   replayAttentionTick: 0,
-  addToReplay: (req) =>
+  addToReplay: (req, replay) =>
     set((state) => {
-      if (state.replayQueue.find((entry) => entry.request.id === req.id)) {
+      const existing = state.replayQueue.find((entry) => entry.request.id === req.id)
+      if (existing) {
+        // If we now have replay details (e.g. from MCP replay.created), merge them in-place.
+        if (replay) {
+          return {
+            replayQueue: state.replayQueue.map((entry) =>
+              entry.request.id === req.id ? { ...entry, request: req, replay } : entry
+            ),
+            replayAttentionTick: state.replayAttentionTick + 1,
+          }
+        }
         return { replayAttentionTick: state.replayAttentionTick + 1 }
       }
       const nextQueueId = state.replayQueue.reduce((max, entry) => Math.max(max, entry.queueId), 0) + 1
       return {
-        replayQueue: [{ queueId: nextQueueId, request: req }, ...state.replayQueue].slice(0, 100),
+        replayQueue: [{ queueId: nextQueueId, request: req, replay }, ...state.replayQueue].slice(0, 100),
         replayAttentionTick: state.replayAttentionTick + 1,
       }
+    }),
+  hydrateReplayQueue: (replays) =>
+    set(() => {
+      const entries = replays
+        .filter((replay) => replay.request?.id)
+        .slice(0, 100)
+        .map((replay, index) => ({
+          queueId: index + 1,
+          request: replay.request as Request,
+          replay,
+        }))
+
+      return { replayQueue: entries, replayAttentionTick: 0 }
     }),
   duplicateReplayItem: (queueId) =>
     set((state) => {
@@ -202,7 +227,7 @@ export const useProxyStore = create<ProxyStore>((set) => ({
       if (!source) return state
       const nextQueueId = state.replayQueue.reduce((max, entry) => Math.max(max, entry.queueId), 0) + 1
       return {
-        replayQueue: [{ queueId: nextQueueId, request: source.request }, ...state.replayQueue].slice(0, 100),
+        replayQueue: [{ queueId: nextQueueId, request: source.request, replay: source.replay }, ...state.replayQueue].slice(0, 100),
         replayAttentionTick: state.replayAttentionTick + 1,
       }
     }),

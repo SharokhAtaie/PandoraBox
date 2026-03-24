@@ -404,6 +404,7 @@ func (p *Proxy) ReplayRequest(reqID int64, modHeaders map[string]string, modBody
 		return replay, err
 	}
 	respRecord.ID = respID
+	newReqCapture.Response = respRecord
 
 	db.UpdateReplay(replayID, &respID, "done", "")
 

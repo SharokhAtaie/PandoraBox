@@ -145,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 		// Replay
 		r.Post("/replay", s.createReplay)
 		r.Get("/replay/{id}", s.getReplay)
+		r.Get("/replays", s.listReplays)
 
 		// CA cert download
 		r.Get("/ca/cert", s.getCACert)

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/hamedsj5/pandorabox/internal/events"
 	proj "github.com/hamedsj5/pandorabox/internal/project"
 	"github.com/hamedsj5/pandorabox/internal/proxy"
 	"github.com/hamedsj5/pandorabox/internal/storage"
@@ -173,6 +175,12 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("mcp_disabled", mcp.Description("Disable MCP access for this project")),
 		mcp.WithNumber("mcp_port", mcp.Description("MCP listen port")),
 	), s.toolUpdateProject)
+
+	// rename_project
+	s.mcp.AddTool(mcp.NewTool("rename_project",
+		mcp.WithDescription("Rename the current project"),
+		mcp.WithString("name", mcp.Description("New project name"), mcp.Required()),
+	), s.toolRenameProject)
 
 	// get_match_replace
 	s.mcp.AddTool(mcp.NewTool("get_match_replace",
@@ -565,6 +573,9 @@ func (s *Server) toolReplayRequest(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	replay, err := s.proxy.ReplayRequest(int64(id), modHeaders, modBody, modURL, nil)
+	if replay != nil {
+		s.bus.Publish(events.Event{Type: events.EventReplayCreated, Data: replay})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -848,6 +859,39 @@ func (s *Server) toolUpdateProject(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	return jsonResult(s.projectResult(mgr))
+}
+
+func (s *Server) toolRenameProject(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if !s.mcpEnabled() {
+		return nil, fmt.Errorf("MCP access is disabled for this project")
+	}
+	mgr := s.getProject()
+	if mgr == nil {
+		return nil, fmt.Errorf("no project loaded")
+	}
+
+	nameRaw, ok := req.Params.Arguments["name"].(string)
+	if !ok {
+		return nil, fmt.Errorf("name required")
+	}
+	name := strings.TrimSpace(nameRaw)
+	if name == "" {
+		return nil, fmt.Errorf("name cannot be empty")
+	}
+
+	cfg := mgr.Config()
+	cfg.Name = name
+	if err := mgr.Save(cfg); err != nil {
+		return nil, err
+	}
+	s.publishProjectUpdated()
+
+	return jsonResult(map[string]interface{}{
+		"success": true,
+		"name":    cfg.Name,
+		"path":    mgr.Path(),
+		"is_temp": mgr.IsTemp(),
+	})
 }
 
 func (s *Server) toolGetMatchReplace(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
