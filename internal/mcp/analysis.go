@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"compress/zlib"
 	"context"
@@ -15,61 +16,122 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/andybalholm/brotli"
 	"github.com/hamedsj5/pandorabox/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// extractHeaderValue returns the first value of a named header from the stored
-// JSON headers string (e.g. `{"Content-Encoding":["gzip"]}`).
-func extractHeaderValue(headersJSON, key string) string {
+// extractHeaderValues returns all normalized values of a named header from the
+// stored JSON headers string (e.g. `{"Content-Encoding":["gzip, br"]}`).
+func extractHeaderValues(headersJSON, key string) []string {
 	var h map[string][]string
 	if err := json.Unmarshal([]byte(headersJSON), &h); err != nil {
-		return ""
+		return nil
 	}
-	lower := strings.ToLower(key)
+	var out []string
 	for k, vs := range h {
-		if strings.ToLower(k) == lower && len(vs) > 0 {
-			return vs[0]
+		if !strings.EqualFold(k, key) {
+			continue
 		}
+		for _, v := range vs {
+			for _, p := range strings.Split(v, ",") {
+				normalized := strings.ToLower(strings.TrimSpace(p))
+				if normalized != "" {
+					out = append(out, normalized)
+				}
+			}
+		}
+		break
 	}
-	return ""
+	return out
+}
+
+func gunzipBody(body []byte) ([]byte, bool) {
+	r, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, false
+	}
+	defer r.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func inflateBody(body []byte) ([]byte, bool) {
+	r, err := zlib.NewReader(bytes.NewReader(body))
+	if err != nil {
+		// Some servers send raw DEFLATE streams without zlib wrapper.
+		fr := flate.NewReader(bytes.NewReader(body))
+		defer fr.Close()
+		out, ferr := io.ReadAll(fr)
+		if ferr != nil {
+			return nil, false
+		}
+		return out, true
+	}
+	defer r.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func brotliDecodeBody(body []byte) ([]byte, bool) {
+	r := brotli.NewReader(bytes.NewReader(body))
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 // decodeBody decompresses body bytes based on the Content-Encoding header.
-// Supports gzip and deflate (zlib). Returns body unchanged for other encodings.
+// Supports gzip, deflate, and br. For stacked encodings (e.g. "gzip, br"),
+// decoding is applied in reverse order.
 func decodeBody(body []byte, headersJSON string) []byte {
 	if len(body) == 0 {
 		return body
 	}
-	enc := strings.ToLower(strings.TrimSpace(extractHeaderValue(headersJSON, "Content-Encoding")))
-	switch enc {
-	case "gzip":
-		r, err := gzip.NewReader(bytes.NewReader(body))
-		if err != nil {
-			return body
-		}
-		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			return body
-		}
-		return out
-	case "deflate":
-		r, err := zlib.NewReader(bytes.NewReader(body))
-		if err != nil {
-			return body
-		}
-		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			return body
-		}
-		return out
-	default:
+	encodings := extractHeaderValues(headersJSON, "Content-Encoding")
+	if len(encodings) == 0 {
 		return body
 	}
+
+	decoded := body
+	for i := len(encodings) - 1; i >= 0; i-- {
+		switch encodings[i] {
+		case "identity":
+			continue
+		case "gzip", "x-gzip":
+			out, ok := gunzipBody(decoded)
+			if !ok {
+				return body
+			}
+			decoded = out
+		case "deflate":
+			out, ok := inflateBody(decoded)
+			if !ok {
+				return body
+			}
+			decoded = out
+		case "br":
+			out, ok := brotliDecodeBody(decoded)
+			if !ok {
+				return body
+			}
+			decoded = out
+		default:
+			// Unknown content-encoding, leave body unchanged.
+			return body
+		}
+	}
+
+	return decoded
 }
 
 // toUTF8 converts bytes to a valid UTF-8 string, replacing invalid sequences.
