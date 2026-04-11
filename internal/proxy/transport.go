@@ -159,6 +159,15 @@ func (p *Proxy) roundTrip(req *http.Request, scheme string) (*http.Response, *st
 	transport := p.makeTransport()
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
+		// Save the request to DB even on transport failure so it appears in
+		// PandoraBox with the failed status rather than silently disappearing.
+		if captured.ID == 0 {
+			if reqID, saveErr := p.getDB().SaveRequest(captured); saveErr == nil {
+				captured.ID = reqID
+				p.requestCount.Add(1)
+				p.bus.Publish(events.Event{Type: events.EventRequestCaptured, Data: captured})
+			}
+		}
 		return nil, captured, fmt.Errorf("upstream: %w", err)
 	}
 

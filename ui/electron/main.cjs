@@ -34,6 +34,7 @@ function startBackend({ projectPath, proxyPort, mcpPort } = {}) {
   if (projectPath) args.push('--project', projectPath)
   if (proxyPort)   args.push('--proxy-port', String(proxyPort))
   if (mcpPort)     args.push('--mcp-port',   String(mcpPort))
+  if (process.env.PANDORABOX_VERBOSE) args.push('--verbose')
 
   backendProcess = spawn(binaryPath, args, {
     stdio: ['ignore', 'pipe', 'pipe'],

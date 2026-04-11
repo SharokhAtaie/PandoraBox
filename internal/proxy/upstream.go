@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	fhttp "github.com/bogdanfinn/fhttp"
@@ -109,19 +108,17 @@ func (d *dualTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Convert to fhttp.Request for the Chrome h2 transport.
 	freq := toFHTTPRequest(req)
 	fresp, err := d.h2t.RoundTrip(freq)
-	if err != nil && isALPNError(err) {
-		// Server doesn't support h2 — retry over h1. The h1 transport also
-		// advertises ["h2","http/1.1"] in ALPN so the JA4 still matches Chrome.
+	if err != nil {
+		// Fall back to h1 on any h2 transport error: ALPN negotiation failures,
+		// stream resets, GOAWAY, header validation rejections, etc. These are all
+		// h2-specific protocol errors that h1 does not have. If h1 also fails,
+		// its error is more meaningful than the h2 error.
 		resetBody()
 		return d.h1t.RoundTrip(req)
 	}
-	if err != nil {
-		return nil, err
-	}
 	resp := fromFHTTPResponse(fresp, req)
-	// If h2 returns 400 with no Cf-Ray, the server rejected the h2 framing
-	// itself (Cloudflare edge drops). Retry over h1 where TLS is negotiated
-	// but framing is plain HTTP/1.1.
+	// If h2 returns 400 with no Cf-Ray, the Cloudflare edge rejected the h2
+	// framing before creating a Ray ID. Retry over h1.
 	if resp.StatusCode == 400 && resp.Header.Get("Cf-Ray") == "-" {
 		resp.Body.Close()
 		resetBody()
@@ -133,12 +130,6 @@ func (d *dualTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func (d *dualTransport) CloseIdleConnections() {
 	d.h2t.CloseIdleConnections()
 	d.h1t.CloseIdleConnections()
-}
-
-// isALPNError reports whether err is the "unexpected ALPN protocol" error that
-// the h2 transport returns when the server negotiates http/1.1 instead of h2.
-func isALPNError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "unexpected ALPN protocol")
 }
 
 // normalizeRequestHost returns a shallow copy of req with the default port
@@ -375,11 +366,12 @@ func buildDirect(dialFn func(ctx context.Context, network, addr string) (net.Con
 		DisableCompression: true,
 	}
 
-	// h1 transport: handles servers that negotiate http/1.1 (h1-only servers).
-	// Also advertises ["h2","http/1.1"] in ALPN so the JA4 fingerprint still
-	// matches Chrome when falling back. Because DialTLSContext returns
-	// *butls.UConn (not *tls.Conn), http.Transport skips the TLSNextProto
-	// h2-upgrade path entirely and uses HTTP/1.1 framing.
+	// h1 transport: handles servers where h2 is unavailable or failed.
+	// Uses HTTP/1.1-only ALPN so the server is forced to negotiate http/1.1.
+	// Using fullALPN here was wrong: the server would pick h2, send h2 frames
+	// as its connection preface (SETTINGS), and net/http — which skips the h2
+	// upgrade path because DialTLSContext returns *butls.UConn not *tls.Conn —
+	// would then read those h2 frames as a "malformed HTTP response".
 	h1t := &http.Transport{
 		DialContext: capturedDial,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -391,7 +383,7 @@ func buildDirect(dialFn func(ctx context.Context, network, addr string) (net.Con
 			if err != nil {
 				return nil, err
 			}
-			return chromeTLSDial(ctx, tcpConn, host, fullALPN)
+			return chromeTLSDial(ctx, tcpConn, host, []string{"http/1.1"})
 		},
 		DisableCompression:    true,
 		ForceAttemptHTTP2:     false,
@@ -406,8 +398,23 @@ func buildDirect(dialFn func(ctx context.Context, network, addr string) (net.Con
 }
 
 // dialTCP establishes a TCP connection to host (host:port), routing through
-// the configured upstream proxy if any. For HTTPS wraps with uTLS Chrome.
+// the configured upstream proxy if any. For HTTPS wraps with uTLS Chrome
+// using the full Chrome ALPN ["h2","http/1.1"].
+//
+// For WebSocket connections use dialTCPH1 instead — WebSocket upgrade is an
+// HTTP/1.1 mechanism and cannot run on an h2 connection.
 func (p *Proxy) dialTCP(host, hostname, scheme string) (net.Conn, error) {
+	return p.dialTCPWithALPN(host, hostname, scheme, []string{"h2", "http/1.1"})
+}
+
+// dialTCPH1 is like dialTCP but forces HTTP/1.1-only ALPN for HTTPS. Use
+// this for WebSocket dials: WebSocket is an HTTP/1.1 Upgrade mechanism and
+// will break if the server negotiates h2 via ALPN.
+func (p *Proxy) dialTCPH1(host, hostname, scheme string) (net.Conn, error) {
+	return p.dialTCPWithALPN(host, hostname, scheme, []string{"http/1.1"})
+}
+
+func (p *Proxy) dialTCPWithALPN(host, hostname, scheme string, alpn []string) (net.Conn, error) {
 	p.upstreamMu.RLock()
 	u := p.upstreamURL
 	p.upstreamMu.RUnlock()
@@ -435,7 +442,7 @@ func (p *Proxy) dialTCP(host, hostname, scheme string) (net.Conn, error) {
 	}
 
 	if scheme == "https" {
-		return chromeTLSDial(context.Background(), conn, hostname, []string{"h2", "http/1.1"})
+		return chromeTLSDial(context.Background(), conn, hostname, alpn)
 	}
 	return conn, nil
 }

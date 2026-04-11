@@ -63,6 +63,7 @@ func main() {
 	serveCmd.Flags().Int("mcp-port", 9090, "MCP SSE port")
 	serveCmd.Flags().String("db", "", "SQLite database path (overrides project DB)")
 	serveCmd.Flags().String("project", "", "Project folder path to open on startup")
+	serveCmd.Flags().Bool("verbose", false, "Enable debug-level logging")
 
 	// Team collaboration flags
 	serveCmd.Flags().Bool("team-server", false, "Run as team sync hub (no local proxy)")
@@ -80,7 +81,11 @@ func main() {
 func runServe(cmd *cobra.Command, args []string) error {
 	cfg := config.FromFlags(cmd)
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logLevel := slog.LevelInfo
+	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
+		logLevel = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 
 	// Load global app config (recent projects, last opened, user identity)

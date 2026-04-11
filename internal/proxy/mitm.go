@@ -61,6 +61,7 @@ func (p *Proxy) handleCONNECT(conn net.Conn, br *bufio.Reader, req *http.Request
 
 		resp, _, err := p.roundTrip(clientReq, "https")
 		if err != nil {
+			slog.Debug("Upstream failed", "host", clientReq.Host, "method", clientReq.Method, "path", clientReq.URL.Path, "err", err)
 			// Write a 502 for this specific request but keep the tunnel alive —
 			// a single upstream failure must not kill every other sub-resource.
 			fmt.Fprintf(tlsConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n")

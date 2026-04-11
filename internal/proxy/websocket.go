@@ -75,8 +75,9 @@ func (p *Proxy) handleWebSocketUpgrade(
 	captured.ID = reqID
 	p.requestCount.Add(1)
 
-	// Dial upstream.
-	upstreamConn, err := p.dialTCP(host, hostname, scheme)
+	// Dial upstream with HTTP/1.1-only ALPN. WebSocket upgrade is an HTTP/1.1
+	// mechanism — if the server negotiates h2 via ALPN the upgrade framing breaks.
+	upstreamConn, err := p.dialTCPH1(host, hostname, scheme)
 	if err != nil {
 		slog.Error("WS upstream dial failed", "host", host, "err", err)
 		return err
@@ -626,7 +627,7 @@ func (p *Proxy) proxyWebSocketRaw(
 		hostname = h
 	}
 
-	upstreamConn, err := p.dialTCP(host, hostname, scheme)
+	upstreamConn, err := p.dialTCPH1(host, hostname, scheme)
 	if err != nil {
 		return err
 	}
