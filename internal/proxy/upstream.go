@@ -12,12 +12,29 @@ import (
 	"net/url"
 	"time"
 
+	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
+
+// chromeTLSDial wraps an existing TCP connection with a uTLS handshake
+// impersonating Chrome's ClientHello. This makes PandoraBox's TLS fingerprint
+// (JA3/JA4) indistinguishable from a real Chrome browser, defeating
+// fingerprint-based bot detection (e.g. Cloudflare Bot Management).
+func chromeTLSDial(ctx context.Context, tcpConn net.Conn, host string) (net.Conn, error) {
+	uconn := utls.UClient(tcpConn, &utls.Config{
+		ServerName: host,
+	}, utls.HelloChrome_Auto)
+	if err := uconn.HandshakeContext(ctx); err != nil {
+		tcpConn.Close()
+		return nil, err
+	}
+	return uconn, nil
+}
 
 // makeTransport returns an http.Transport configured to route through the
 // upstream proxy (if any). The transport is reused to preserve connection
 // behavior close to a browser (keep-alive + pooled TLS sessions).
+// For TLS connections, uTLS is used to impersonate Chrome's fingerprint.
 func (p *Proxy) makeTransport() *http.Transport {
 	p.transportMu.Lock()
 	defer p.transportMu.Unlock()
@@ -45,8 +62,6 @@ func (p *Proxy) makeTransport() *http.Transport {
 		KeepAlive: 30 * time.Second,
 	}
 	t := &http.Transport{
-		Proxy:                 nil,
-		DialContext:           dialer.DialContext,
 		DisableCompression:    true,
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          200,
@@ -54,42 +69,72 @@ func (p *Proxy) makeTransport() *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			NextProtos: []string{"http/1.1"},
-		},
 	}
 
 	if u == nil {
-		p.transport = t
-		p.transportKey = key
-		return p.transport
+		// Direct connection: plain TCP via dialer, TLS via uTLS Chrome.
+		t.DialContext = dialer.DialContext
+		t.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
+			tcpConn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			return chromeTLSDial(ctx, tcpConn, host)
+		}
+	} else {
+		switch u.Scheme {
+		case "http", "https":
+			// HTTP proxy: Go handles the CONNECT tunnel internally and uses its
+			// own TLS stack for the final handshake. DialTLSContext is not
+			// invoked for proxy'd HTTPS, so we fall back to the standard TLS
+			// config with the minimum required options.
+			t.Proxy = http.ProxyURL(u)
+			t.DialContext = dialer.DialContext
+			t.TLSClientConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				NextProtos: []string{"http/1.1"},
+			}
+		case "socks5", "socks5h":
+			// SOCKS5: TCP layer routed via SOCKS5, TLS via uTLS Chrome.
+			// Both DialContext (HTTP targets) and DialTLSContext (HTTPS targets)
+			// dial through the SOCKS5 proxy.
+			auth := socksAuth(u)
+			d, err := proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
+			if err != nil {
+				slog.Warn("SOCKS5 dialer failed", "err", err)
+				break
+			}
+			t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return d.Dial(network, addr)
+			}
+			t.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					host = addr
+				}
+				tcpConn, err := d.Dial(network, addr)
+				if err != nil {
+					return nil, err
+				}
+				return chromeTLSDial(ctx, tcpConn, host)
+			}
+		default:
+			slog.Warn("Unknown upstream proxy scheme", "scheme", u.Scheme)
+		}
 	}
 
-	switch u.Scheme {
-	case "http", "https":
-		t.Proxy = http.ProxyURL(u)
-	case "socks5", "socks5h":
-		auth := socksAuth(u)
-		d, err := proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
-		if err != nil {
-			slog.Warn("SOCKS5 dialer failed", "err", err)
-			return t
-		}
-		t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return d.Dial(network, addr)
-		}
-	default:
-		slog.Warn("Unknown upstream proxy scheme", "scheme", u.Scheme)
-	}
 	p.transport = t
 	p.transportKey = key
 	return p.transport
 }
 
 // dialTCP establishes a TCP connection to host (host:port), routing through the
-// configured upstream proxy if any. If scheme == "https", wraps in TLS using
-// hostname as SNI.
+// configured upstream proxy if any. For HTTPS, wraps the connection with uTLS
+// impersonating Chrome's fingerprint.
 func (p *Proxy) dialTCP(host, hostname, scheme string) (net.Conn, error) {
 	p.upstreamMu.RLock()
 	u := p.upstreamURL
@@ -118,12 +163,7 @@ func (p *Proxy) dialTCP(host, hostname, scheme string) (net.Conn, error) {
 	}
 
 	if scheme == "https" {
-		tlsConn := tls.Client(conn, &tls.Config{ServerName: hostname})
-		if err := tlsConn.Handshake(); err != nil {
-			conn.Close()
-			return nil, err
-		}
-		return tlsConn, nil
+		return chromeTLSDial(context.Background(), conn, hostname)
 	}
 	return conn, nil
 }
