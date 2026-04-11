@@ -16,17 +16,25 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// chromeSpec is the Chrome ClientHello spec with ALPN forced to http/1.1.
-// Built once at startup: get the full Chrome spec, then patch out h2 from
-// the ALPN extension. This preserves the JA3/JA4 fingerprint (cipher suites,
-// extensions list, curves, GREASE) while preventing h2 negotiation.
+// chromeTLSDial wraps an existing TCP connection with a uTLS handshake
+// impersonating Chrome's ClientHello. This makes PandoraBox's TLS fingerprint
+// (JA3/JA4) indistinguishable from a real Chrome browser, defeating
+// fingerprint-based bot detection (e.g. Cloudflare Bot Management).
 //
-// h2 must be excluded because Go's http.Transport performs a (*tls.Conn) type
-// assertion when upgrading a connection to h2, which panics on *utls.UConn.
-var chromeSpec = func() utls.ClientHelloSpec {
+// The spec MUST be built fresh per connection. ApplyPreset mutates extension
+// objects in-place (GREASE values, ECDHE KeyShare.Data, etc.). Sharing a spec
+// across connections causes the second+ connection to skip key generation
+// (len(Data)>1 guard) and send stale key material — the TLS handshake then
+// fails because the client has no matching private key for the public key it
+// advertised.
+//
+// h2 is removed from ALPN because Go's http.Transport performs a (*tls.Conn)
+// type assertion when upgrading to h2, which panics on *utls.UConn.
+func chromeTLSDial(ctx context.Context, tcpConn net.Conn, host string) (net.Conn, error) {
 	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 	if err != nil {
-		panic("utls: failed to load Chrome spec: " + err.Error())
+		tcpConn.Close()
+		return nil, fmt.Errorf("utls spec: %w", err)
 	}
 	for _, ext := range spec.Extensions {
 		if alpn, ok := ext.(*utls.ALPNExtension); ok {
@@ -34,18 +42,10 @@ var chromeSpec = func() utls.ClientHelloSpec {
 			break
 		}
 	}
-	return spec
-}()
-
-// chromeTLSDial wraps an existing TCP connection with a uTLS handshake
-// impersonating Chrome's ClientHello. This makes PandoraBox's TLS fingerprint
-// (JA3/JA4) indistinguishable from a real Chrome browser, defeating
-// fingerprint-based bot detection (e.g. Cloudflare Bot Management).
-func chromeTLSDial(ctx context.Context, tcpConn net.Conn, host string) (net.Conn, error) {
 	uconn := utls.UClient(tcpConn, &utls.Config{
 		ServerName: host,
 	}, utls.HelloCustom)
-	if err := uconn.ApplyPreset(&chromeSpec); err != nil {
+	if err := uconn.ApplyPreset(&spec); err != nil {
 		tcpConn.Close()
 		return nil, fmt.Errorf("utls apply preset: %w", err)
 	}
