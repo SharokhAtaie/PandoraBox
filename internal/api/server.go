@@ -41,10 +41,10 @@ type Server struct {
 	appCfg    *project.AppConfig
 
 	// Team collaboration — both fields may be nil when not in team mode.
-	teamClient     *team.Client      // non-nil when connected as a team client
-	teamServer     *team.Server      // non-nil when running as team server hub
-	teamServerCfg  *team.ServerConfig // non-nil in server mode
-	isServerMode   bool
+	teamClient    *team.Client       // non-nil when connected as a team client
+	teamServer    *team.Server       // non-nil when running as team server hub
+	teamServerCfg *team.ServerConfig // non-nil in server mode
+	isServerMode  bool
 }
 
 func NewServer(cfg *config.Config, db *storage.DB, bus *events.Bus, p *proxy.Proxy, intercept *proxy.InterceptQueue, authority *ca.CA) *Server {
@@ -146,6 +146,12 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/replay", s.createReplay)
 		r.Get("/replay/{id}", s.getReplay)
 		r.Get("/replays", s.listReplays)
+
+		// Converter
+		r.Get("/converter", s.getConverterConfig)
+		r.Put("/converter", s.updateConverterConfig)
+		r.Post("/converter/transform", s.converterTransform)
+		r.Post("/converter/stack/run", s.converterRunStack)
 
 		// CA cert download
 		r.Get("/ca/cert", s.getCACert)

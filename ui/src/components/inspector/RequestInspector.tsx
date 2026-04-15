@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useContextMenu } from '@/hooks/useContextMenu'
 import { useProxyStore } from '@/store/proxy'
+import { useConverterStore } from '@/store/converter'
 import { api } from '@/api/client'
 import type { Request, ScopeRule } from '@/api/client'
 import { MethodBadge } from '@/components/common/MethodBadge'
@@ -49,8 +50,10 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
   const [copiedMsg, setCopiedMsg] = useState('')
   const [requestBody, setRequestBody] = useState<DecodedBody | null>(null)
   const [responseBody, setResponseBody] = useState<DecodedBody | null>(null)
+  const [selectedText, setSelectedText] = useState('')
 
   const navigate = useNavigate()
+  const sendToConverter = useConverterStore((s) => s.sendToConverter)
   const { open: contextMenuOpen, openMenu, close: closeContextMenu, menuRef } = useContextMenu()
   const [addToFlowOpen, setAddToFlowOpen] = useState(false)
   const [addToOrganizerOpen, setAddToOrganizerOpen] = useState(false)
@@ -69,6 +72,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
     if (!req) {
       setRequestBody(null)
       setResponseBody(null)
+      setSelectedText('')
       return
     }
 
@@ -92,8 +96,20 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
 
   function handleContextMenu(e: React.MouseEvent) {
     if (!req) return
+    const selection = window.getSelection()?.toString()?.trim() ?? ''
+    if (selection) setSelectedText(selection.slice(0, 25000))
     openMenu(e)
   }
+
+  useEffect(() => {
+    const onCodeViewerSelection = (event: Event) => {
+      const custom = event as CustomEvent<{ text: string } | null>
+      const text = custom.detail?.text?.trim() ?? ''
+      if (text) setSelectedText(text.slice(0, 25000))
+    }
+    window.addEventListener('pandora:converter-selection', onCodeViewerSelection as EventListener)
+    return () => window.removeEventListener('pandora:converter-selection', onCodeViewerSelection as EventListener)
+  }, [])
 
   async function handleToggleHighlight() {
     if (!req) return
@@ -282,6 +298,20 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
             <FolderPlus size={14} />
             Add to Organizer
           </button>
+
+          {selectedText && (
+            <button
+              onClick={() => {
+                sendToConverter(selectedText)
+                navigate('/converter')
+                closeContextMenu()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+            >
+              <RotateCcw size={14} />
+              Send Selection to Converter
+            </button>
+          )}
 
           <div className="my-1 border-t border-border" />
 

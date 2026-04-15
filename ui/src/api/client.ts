@@ -80,6 +80,28 @@ export interface Flow {
   variables?: Record<string, string>
 }
 
+export interface ConvertStep {
+  id: string
+  algorithm: string
+  enabled: boolean
+}
+
+export interface ConvertStack {
+  id: string
+  name: string
+  steps: ConvertStep[]
+}
+
+export interface ConverterConfig {
+  stacks: ConvertStack[]
+}
+
+export interface ConverterAlgorithm {
+  id: string
+  label: string
+  kind: 'decode' | 'encode' | 'hash' | 'transform'
+}
+
 export interface ProjectInfo {
   name: string
   path: string
@@ -93,6 +115,7 @@ export interface ProjectInfo {
   match_replace: MatchReplaceRule[]
   middleware: MiddlewareConfig
   flows: Flow[]
+  converter: ConverterConfig
 }
 
 export interface MCPStatus {
@@ -353,7 +376,7 @@ export const api = {
   },
   project: {
     get: () => get<ProjectInfo>('/project'),
-    update: (body: { name?: string; proxy?: ProjectInfo['proxy']; filters?: FilterConfig; scope?: ScopeConfig; mcp_disabled?: boolean; mcp_port?: number; match_replace?: MatchReplaceRule[]; middleware?: MiddlewareConfig; flows?: Flow[] }) =>
+    update: (body: { name?: string; proxy?: ProjectInfo['proxy']; filters?: FilterConfig; scope?: ScopeConfig; mcp_disabled?: boolean; mcp_port?: number; match_replace?: MatchReplaceRule[]; middleware?: MiddlewareConfig; flows?: Flow[]; converter?: ConverterConfig }) =>
       put<ProjectInfo>('/project', body),
     saveAs: (path: string, name?: string) => post<ProjectInfo>('/project/save-as', { path, name }),
     recent: () => get<RecentProject[]>('/project/recent'),
@@ -366,6 +389,12 @@ export const api = {
       response: { status: number; headers: Record<string, string>; body: string }
       variables: Record<string, string>
     }) => post<{ variables: Record<string, string>; error: string }>('/flows/exec', body),
+  },
+  converter: {
+    get: () => get<{ config: ConverterConfig; algorithms: ConverterAlgorithm[] }>('/converter'),
+    update: (config: ConverterConfig) => put<{ config: ConverterConfig; algorithms: ConverterAlgorithm[] }>('/converter', { config }),
+    transform: (body: { input: string; algorithm: string }) => post<{ output: string }>('/converter/transform', body),
+    runStack: (body: { input: string; stack_id?: string; stack?: ConvertStack }) => post<{ output: string; stack: ConvertStack }>('/converter/stack/run', body),
   },
   team: {
     status: () => get<TeamStatus>('/team/status'),

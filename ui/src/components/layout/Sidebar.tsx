@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Globe, Shield, RotateCcw, Settings, Target, Network, Replace, GitBranch, Terminal, Wifi, WifiOff, Loader2, FolderOpen, Crosshair, RadioTower } from 'lucide-react'
+import { Globe, Shield, RotateCcw, Settings, Target, Network, Replace, GitBranch, Terminal, Wifi, WifiOff, Loader2, FolderOpen, Crosshair, RadioTower, Binary } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useProxyStore } from '@/store/proxy'
 import { useConsoleStore } from '@/store/console'
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/match-replace', label: 'Match & Replace', icon: Replace },
   { to: '/sitemap', label: 'SiteMap', icon: Network },
   { to: '/replay', label: 'Replay', icon: RotateCcw },
+  { to: '/converter', label: 'Converter', icon: Binary },
   { to: '/intruder', label: 'Intruder', icon: Crosshair },
   { to: '/collaborator', label: 'Collaborator', icon: RadioTower },
   { to: '/flows', label: 'Flows', icon: GitBranch },
@@ -69,14 +70,14 @@ export function Sidebar() {
   }, [collaboratorAttentionTick])
 
   return (
-    <aside className="w-56 flex flex-col py-3 border-r border-border bg-card gap-1">
+    <aside className="w-52 flex flex-col py-2 border-r border-border bg-card gap-1">
       {/* Logo */}
-      <div className="px-4 mb-2">
-        <div className="flex items-center gap-3 bg-primary/20 rounded-lg p-3">
-          <div className="w-7 h-7 rounded-md bg-[#101318] flex items-center justify-center shrink-0 p-1">
+      <div className="px-3 mb-1.5">
+        <div className="flex items-center gap-2.5 bg-primary/20 rounded-lg p-2.5">
+          <div className="w-6 h-6 rounded-md bg-[#101318] flex items-center justify-center shrink-0 p-1">
             <img src="/logo-trimmed.png" alt="PandoraBox" className="w-full h-full object-contain" />
           </div>
-          <span className="text-foreground font-semibold">PandoraBox</span>
+          <span className="text-foreground font-semibold text-[13px]">PandoraBox</span>
         </div>
       </div>
 
@@ -84,14 +85,14 @@ export function Sidebar() {
       <ProjectSwitcher />
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 space-y-1">
+      <nav className="flex-1 px-2.5 space-y-0.5">
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm',
+                'flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-[13px] leading-none',
                 to === '/replay' && blinkReplay && 'replay-attention',
                 to === '/intruder' && blinkIntruder && 'replay-attention',
                 to === '/collaborator' && blinkCollaborator && 'replay-attention',
@@ -101,7 +102,7 @@ export function Sidebar() {
               )
             }
           >
-            <Icon size={18} />
+            <Icon size={16} />
             <span>{label}</span>
           </NavLink>
         ))}
@@ -111,19 +112,19 @@ export function Sidebar() {
       <TeamPresence />
 
       {/* Bottom section */}
-      <div className="px-3 flex flex-col gap-2">
+      <div className="px-2.5 flex flex-col gap-1.5">
         {/* Console Toggle */}
         <button
           onClick={toggleConsole}
           title="Console (`)"
           className={cn(
-            'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm',
+            'relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-[13px] leading-none',
             consoleOpen
               ? 'bg-primary/20 text-primary'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           )}
         >
-          <Terminal size={18} />
+          <Terminal size={16} />
           <span>Console</span>
           {unread > 0 && (
             <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
@@ -133,7 +134,7 @@ export function Sidebar() {
         </button>
 
         {/* Status row: proxy + team sync */}
-        <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center justify-between px-2.5 py-1.5">
           <div className="flex items-center gap-2">
             <div
               title={status?.running ? 'Proxy running' : 'Proxy stopped'}
@@ -142,7 +143,7 @@ export function Sidebar() {
                 status?.running ? 'bg-emerald-400' : 'bg-red-400'
               )}
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {status?.running ? 'Proxy Active' : 'Proxy Stopped'}
             </span>
           </div>
@@ -154,13 +155,13 @@ export function Sidebar() {
                 syncStatus === 'connecting' ? 'Team: connecting…' : 'Team: disconnected'
               }
               className={cn(
-                'text-xs',
+                'text-[11px]',
                 syncStatus === 'connected' ? 'text-emerald-400' :
                 syncStatus === 'connecting' ? 'text-amber-400' : 'text-muted-foreground'
               )}
             >
-              {syncStatus === 'connected' && <Wifi size={14} />}
-              {syncStatus === 'connecting' && <Loader2 size={14} className="animate-spin" />}
+              {syncStatus === 'connected' && <Wifi size={13} />}
+              {syncStatus === 'connecting' && <Loader2 size={13} className="animate-spin" />}
             </span>
           )}
         </div>

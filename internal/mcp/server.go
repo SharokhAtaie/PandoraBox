@@ -184,6 +184,7 @@ func NewServer(cfg *config.Config, db *storage.DB, bus *events.Bus, p *proxy.Pro
 	s.registerOrganizerTools()
 	s.registerIntruderTools()
 	s.registerCollaboratorTools()
+	s.registerConverterTools()
 
 	return s
 }

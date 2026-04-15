@@ -79,6 +79,7 @@ function mergeProject(current: ProjectInfo | null, next: ProjectInfo): ProjectIn
     match_replace: sameJSON(current.match_replace, next.match_replace) ? current.match_replace : next.match_replace,
     middleware: sameJSON(current.middleware, next.middleware) ? current.middleware : next.middleware,
     flows: sameJSON(current.flows, next.flows) ? current.flows : next.flows,
+    converter: sameJSON(current.converter, next.converter) ? current.converter : next.converter,
   }
 }
 

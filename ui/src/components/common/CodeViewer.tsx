@@ -48,6 +48,36 @@ export function CodeViewer({
   }, [value, language, resolvedTypography.fontSize, minHeight])
 
   const onMount: OnMount = (editor) => {
+    const emitSelection = () => {
+      const model = editor.getModel()
+      const selection = editor.getSelection()
+      if (!model || !selection || selection.isEmpty()) {
+        dispatchConverterSelection(null)
+        return
+      }
+
+      const text = model.getValueInRange(selection)
+      if (!text.trim()) {
+        dispatchConverterSelection(null)
+        return
+      }
+
+      const endPos = selection.getEndPosition()
+      const visiblePos = editor.getScrolledVisiblePosition(endPos)
+      const node = editor.getDomNode()
+      if (!visiblePos || !node) {
+        dispatchConverterSelection(null)
+        return
+      }
+
+      const rect = node.getBoundingClientRect()
+      dispatchConverterSelection({
+        text: text.slice(0, 25000),
+        x: rect.left + visiblePos.left,
+        y: rect.top + visiblePos.top + visiblePos.height + 8,
+      })
+    }
+
     const syncHeight = () => {
       if (!autoHeight) {
         editor.layout({ width: editor.getLayoutInfo().width, height: maxHeight })
@@ -60,7 +90,13 @@ export function CodeViewer({
 
     syncHeight()
     const disposable = editor.onDidContentSizeChange(syncHeight)
-    return () => disposable.dispose()
+    const selectionDisposable = editor.onDidChangeCursorSelection(emitSelection)
+    const blurDisposable = editor.onDidBlurEditorText(() => dispatchConverterSelection(null))
+    editor.onDidDispose(() => {
+      disposable.dispose()
+      selectionDisposable.dispose()
+      blurDisposable.dispose()
+    })
   }
 
   return (
@@ -102,6 +138,11 @@ export function CodeViewer({
       />
     </div>
   )
+}
+
+function dispatchConverterSelection(detail: { text: string; x: number; y: number } | null) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('pandora:converter-selection', { detail }))
 }
 
 function cssHslVarToHex(value: string, fallback: string): string {

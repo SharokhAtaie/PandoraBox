@@ -49,7 +49,7 @@ type MatchReplaceRule struct {
 	ID      int    `json:"id"`
 	Enabled bool   `json:"enabled"`
 	Name    string `json:"name,omitempty"`
-	Target  string `json:"target"`  // "req-url" | "req-header" | "req-body" | "res-header" | "res-body"
+	Target  string `json:"target"` // "req-url" | "req-header" | "req-body" | "res-header" | "res-body"
 	IsRegex bool   `json:"is_regex"`
 	Match   string `json:"match"`
 	Replace string `json:"replace"`
@@ -62,10 +62,10 @@ type MiddlewareNodePos struct {
 
 type MiddlewareNode struct {
 	ID       string            `json:"id"`
-	Type     string            `json:"type"`     // "request"|"response"|"ws_c2s"|"ws_s2c"
+	Type     string            `json:"type"` // "request"|"response"|"ws_c2s"|"ws_s2c"
 	Name     string            `json:"name"`
 	Enabled  bool              `json:"enabled"`
-	Code     string            `json:"code"`     // full Python function: "def process(packet):..."
+	Code     string            `json:"code"` // full Python function: "def process(packet):..."
 	Position MiddlewareNodePos `json:"position"`
 }
 
@@ -96,6 +96,22 @@ type Flow struct {
 	Variables map[string]string `json:"variables,omitempty"`
 }
 
+type ConvertStep struct {
+	ID        string `json:"id"`
+	Algorithm string `json:"algorithm"`
+	Enabled   bool   `json:"enabled"`
+}
+
+type ConvertStack struct {
+	ID    string       `json:"id"`
+	Name  string       `json:"name"`
+	Steps []ConvertStep `json:"steps"`
+}
+
+type ConverterConfig struct {
+	Stacks []ConvertStack `json:"stacks"`
+}
+
 type Config struct {
 	Name         string             `json:"name"`
 	CreatedAt    time.Time          `json:"created_at"`
@@ -107,6 +123,7 @@ type Config struct {
 	MatchReplace []MatchReplaceRule `json:"match_replace,omitempty"`
 	Middleware   MiddlewareConfig   `json:"middleware,omitempty"`
 	Flows        []Flow             `json:"flows,omitempty"`
+	Converter    ConverterConfig      `json:"converter,omitempty"`
 }
 
 type Manager struct {
@@ -182,6 +199,9 @@ func OpenProject(path string) (*Manager, error) {
 	}
 	if cfg.Flows == nil {
 		cfg.Flows = []Flow{}
+	}
+	if cfg.Converter.Stacks == nil {
+		cfg.Converter.Stacks = []ConvertStack{}
 	}
 	return &Manager{path: path, cfg: cfg}, nil
 }

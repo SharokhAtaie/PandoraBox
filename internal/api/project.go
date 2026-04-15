@@ -25,6 +25,7 @@ type projectInfoResponse struct {
 	MatchReplace []proj.MatchReplaceRule `json:"match_replace"`
 	Middleware   proj.MiddlewareConfig   `json:"middleware"`
 	Flows        []proj.Flow             `json:"flows"`
+	Converter    proj.ConverterConfig      `json:"converter"`
 }
 
 func (s *Server) getMCPStatusSnapshot() mcpsrv.Status {
@@ -58,6 +59,7 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 		MatchReplace: cfg.MatchReplace,
 		Middleware:   cfg.Middleware,
 		Flows:        cfg.Flows,
+		Converter:    cfg.Converter,
 	})
 }
 
@@ -81,6 +83,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		MatchReplace *[]proj.MatchReplaceRule `json:"match_replace"`
 		Middleware   *proj.MiddlewareConfig   `json:"middleware"`
 		Flows        *[]proj.Flow             `json:"flows"`
+		Converter    *proj.ConverterConfig      `json:"converter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -121,6 +124,9 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Flows != nil {
 		cfg.Flows = *body.Flows
+	}
+	if body.Converter != nil {
+		cfg.Converter = *body.Converter
 	}
 
 	if err := mgr.Save(cfg); err != nil {
@@ -167,6 +173,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		MatchReplace: cfg.MatchReplace,
 		Middleware:   cfg.Middleware,
 		Flows:        cfg.Flows,
+		Converter:    cfg.Converter,
 	})
 }
 
@@ -408,5 +415,6 @@ func (s *Server) switchProject(newMgr *proj.Manager, appCfg *proj.AppConfig, w h
 		MatchReplace: cfg.MatchReplace,
 		Middleware:   cfg.Middleware,
 		Flows:        cfg.Flows,
+		Converter:    cfg.Converter,
 	})
 }

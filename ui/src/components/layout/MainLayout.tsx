@@ -10,6 +10,7 @@ import { useProxyStore } from '@/store/proxy'
 import { useFlowsStore } from '@/store/flows'
 import { useConsoleStore } from '@/store/console'
 import { Toaster } from 'sonner'
+import { SelectionConverterPopup } from './SelectionConverterPopup'
 
 export function MainLayout() {
   useWebSocket()
@@ -80,6 +81,7 @@ export function MainLayout() {
         <Outlet />
       </main>
       <ConsolePanel />
+      <SelectionConverterPopup />
       <Toaster position="bottom-right" theme="dark" richColors />
     </div>
   )

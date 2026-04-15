@@ -11,6 +11,7 @@ import { FlowsPage } from '@/pages/FlowsPage'
 import { OrganizerPage } from '@/pages/OrganizerPage'
 import { IntruderPage } from '@/pages/IntruderPage'
 import { CollaboratorPage } from '@/pages/CollaboratorPage'
+import { ConverterPage } from '@/pages/ConverterPage'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { LauncherPage } from '@/pages/LauncherPage'
 
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/organizer" element={<OrganizerPage />} />
             <Route path="/intruder" element={<IntruderPage />} />
             <Route path="/collaborator" element={<CollaboratorPage />} />
+            <Route path="/converter" element={<ConverterPage />} />
             <Route path="/sitemap" element={<SitemapPage />} />
             <Route path="/scope" element={<ScopePage />} />
             <Route path="/match-replace" element={<MatchReplacePage />} />
