@@ -1,5 +1,5 @@
-.PHONY: build dev dev-backend dev-ui electron electron-mac electron-win electron-linux electron-all test lint clean \
-        go-build-mac go-build-win go-build-linux
+.PHONY: build dev dev-backend dev-ui electron electron-mac electron-mac-arm64 electron-win electron-win-x64 electron-linux electron-linux-x64 electron-all electron-all-64 test lint clean \
+        go-build-mac go-build-mac-arm64 go-build-win go-build-win-x64 go-build-linux go-build-linux-x64
 
 # Build the Go binary + embed the React UI (web mode)
 build:
@@ -28,10 +28,19 @@ go-build-mac: _ui-build
 	GOOS=darwin  GOARCH=arm64 go build -o bin/pandorabox-mac-arm64 ./cmd/pandorabox
 	GOOS=darwin  GOARCH=amd64 go build -o bin/pandorabox-mac-x64   ./cmd/pandorabox
 
+go-build-mac-arm64: _ui-build
+	GOOS=darwin  GOARCH=arm64 go build -o bin/pandorabox-mac-arm64 ./cmd/pandorabox
+
 go-build-win: _ui-build
 	GOOS=windows GOARCH=amd64 go build -o bin/pandorabox-win.exe   ./cmd/pandorabox
 
+go-build-win-x64: _ui-build
+	GOOS=windows GOARCH=amd64 go build -o bin/pandorabox-win.exe   ./cmd/pandorabox
+
 go-build-linux: _ui-build
+	GOOS=linux   GOARCH=amd64 go build -o bin/pandorabox-linux      ./cmd/pandorabox
+
+go-build-linux-x64: _ui-build
 	GOOS=linux   GOARCH=amd64 go build -o bin/pandorabox-linux      ./cmd/pandorabox
 
 # ---------------------------------------------------------------------------
@@ -47,15 +56,27 @@ _ui-build:
 electron-mac: go-build-mac
 	cd ui && npx electron-builder --mac
 
+electron-mac-arm64: go-build-mac-arm64
+	cd ui && npx electron-builder --mac --arm64
+
 electron-win: go-build-win
 	cd ui && npx electron-builder --win
+
+electron-win-x64: go-build-win-x64
+	cd ui && npx electron-builder --win --x64
 
 electron-linux: go-build-linux
 	cd ui && npx electron-builder --linux
 
+electron-linux-x64: go-build-linux-x64
+	cd ui && npx electron-builder --linux --x64
+
 # Build for all platforms in one go
 electron-all: go-build-mac go-build-win go-build-linux
 	cd ui && npx electron-builder --mac --win --linux
+
+# Build arm64 macOS + x64 Windows/Linux
+electron-all-64: electron-mac-arm64 electron-win-x64 electron-linux-x64
 
 # Package Electron app for the current host platform (dev convenience)
 electron: build
