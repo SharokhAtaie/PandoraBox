@@ -11,6 +11,15 @@ type PopupState = {
   text: string
   x: number
   y: number
+  canReplace?: boolean
+}
+
+type ConverterSelectionDetail = {
+  text: string
+  x: number
+  y: number
+  canReplace?: boolean
+  replaceSelection?: (nextText: string) => void
 }
 
 export function SelectionConverterPopup() {
@@ -27,6 +36,7 @@ export function SelectionConverterPopup() {
   const holdPopupUntilRef = useRef(0)
   const popupRef = useRef<HTMLDivElement | null>(null)
   const popupOpenRef = useRef(false)
+  const replaceSelectionRef = useRef<((nextText: string) => void) | null>(null)
 
   const stacks = project?.converter?.stacks ?? []
   const hasStacks = stacks.length > 0
@@ -52,6 +62,9 @@ export function SelectionConverterPopup() {
 
   useEffect(() => {
     popupOpenRef.current = Boolean(popup)
+    if (!popup) {
+      replaceSelectionRef.current = null
+    }
   }, [popup])
 
   useEffect(() => {
@@ -82,18 +95,23 @@ export function SelectionConverterPopup() {
 
   useEffect(() => {
     const onCodeViewerSelection = (event: Event) => {
-      const custom = event as CustomEvent<{ text: string; x: number; y: number } | null>
+      const custom = event as CustomEvent<ConverterSelectionDetail | null>
       const detail = custom.detail
       if (!detail || !detail.text?.trim()) {
+        if (!popupOpenRef.current) {
+          replaceSelectionRef.current = null
+        }
         return
       }
       holdPopupUntilRef.current = Date.now() + 600
       setPreview('')
       setShowPreview(false)
+      replaceSelectionRef.current = detail.replaceSelection ?? null
       setPopup({
         text: detail.text.slice(0, 25000),
         x: Math.min(window.innerWidth - 360, Math.max(12, detail.x)),
         y: Math.min(window.innerHeight - 220, Math.max(12, detail.y)),
+        canReplace: Boolean(detail.canReplace && detail.replaceSelection),
       })
     }
 
@@ -120,6 +138,11 @@ export function SelectionConverterPopup() {
 
       const anchor = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement
       const isMonaco = Boolean(anchor?.closest('.monaco-editor'))
+      if (isMonaco) {
+        // Monaco selections are handled via pandora:converter-selection
+        // so we can keep replace-capable metadata.
+        return
+      }
       if (!isMonaco && anchor && (anchor.closest('input, textarea, [contenteditable="true"]'))) {
         setPopup(null)
         return
@@ -132,6 +155,7 @@ export function SelectionConverterPopup() {
         text: text.slice(0, 25000),
         x: Math.min(window.innerWidth - 360, Math.max(12, rect.left)),
         y: Math.min(window.innerHeight - 220, Math.max(12, rect.bottom + 8)),
+        canReplace: false,
       })
     }
 
@@ -185,6 +209,24 @@ export function SelectionConverterPopup() {
     }
   }
 
+  async function replaceSelectionWithQuick() {
+    const replacer = replaceSelectionRef.current
+    if (!replacer) return
+    setBusy(true)
+    try {
+      const r = await api.converter.transform({ input: selectedText, algorithm })
+      replacer(r.output)
+      setPreview(r.output)
+      setShowPreview(true)
+      setPopup(null)
+    } catch (e) {
+      setPreview(e instanceof Error ? e.message : 'Failed')
+      setShowPreview(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div
       ref={popupRef}
@@ -206,6 +248,15 @@ export function SelectionConverterPopup() {
         >
           Send to Converter
         </button>
+        {popup.canReplace && (
+          <button
+            onClick={() => replaceSelectionWithQuick().catch(console.error)}
+            disabled={busy}
+            className={cn('px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:text-foreground', busy ? 'opacity-60 text-muted-foreground' : 'text-foreground')}
+          >
+            Replace Selection
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-[1fr_auto] gap-2">

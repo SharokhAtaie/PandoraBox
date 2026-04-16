@@ -41,8 +41,7 @@ export function ConverterPanel() {
   }, [pendingAlgorithm, algorithms, clearPendingAlgorithm])
 
   useEffect(() => {
-    const c = project?.converter ?? emptyConfig
-    setConfig(c)
+    setConfig(normalizeConverterConfig(project?.converter))
   }, [project?.converter])
 
   useEffect(() => {
@@ -84,7 +83,7 @@ export function ConverterPanel() {
   }
 
   async function saveConfig(next: ConverterConfig) {
-    const p = await api.project.update({ converter: next })
+    const p = await api.project.update({ converter: normalizeConverterConfig(next) })
     syncProject(p)
   }
 
@@ -292,4 +291,14 @@ export function ConverterPanel() {
       </div>
     </div>
   )
+}
+
+function normalizeConverterConfig(config?: ConverterConfig | null): ConverterConfig {
+  if (!config || !Array.isArray(config.stacks)) return emptyConfig
+  return {
+    stacks: config.stacks.map((stack) => ({
+      ...stack,
+      steps: Array.isArray(stack.steps) ? stack.steps : [],
+    })),
+  }
 }

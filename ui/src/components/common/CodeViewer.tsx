@@ -13,6 +13,14 @@ interface CodeViewerProps {
   autoHeight?: boolean
 }
 
+type ConverterSelectionDetail = {
+  text: string
+  x: number
+  y: number
+  canReplace?: boolean
+  replaceSelection?: (nextText: string) => void
+}
+
 export function CodeViewer({
   value,
   language,
@@ -75,6 +83,21 @@ export function CodeViewer({
         text: text.slice(0, 25000),
         x: rect.left + visiblePos.left,
         y: rect.top + visiblePos.top + visiblePos.height + 8,
+        canReplace: !readOnly,
+        replaceSelection: !readOnly
+          ? (nextText: string) => {
+              const liveModel = editor.getModel()
+              const liveSelection = editor.getSelection()
+              if (!liveModel || !liveSelection) return
+              editor.executeEdits('converter-replace', [{
+                range: liveSelection,
+                text: nextText,
+                forceMoveMarkers: true,
+              }])
+              onChange?.(liveModel.getValue())
+              editor.focus()
+            }
+          : undefined,
       })
     }
 
@@ -140,7 +163,7 @@ export function CodeViewer({
   )
 }
 
-function dispatchConverterSelection(detail: { text: string; x: number; y: number } | null) {
+function dispatchConverterSelection(detail: ConverterSelectionDetail | null) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('pandora:converter-selection', { detail }))
 }

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { api } from '@/api/client'
-import type { Replay, Request } from '@/api/client'
+import type { Replay, Request, Response } from '@/api/client'
 import { useProxyStore, type ReplayQueueItem } from '@/store/proxy'
 import { useReplayStore } from '@/store/replay'
 import { useThemeStore } from '@/store/theme'
@@ -16,12 +16,26 @@ import { decodeBodyForDisplay, type DecodedBody } from '@/lib/httpBodies'
 import { presentBody } from '@/lib/bodyPresentation'
 import { applyAutomaticContentLength, encodeRawRequest, getRawRequestText } from '@/lib/rawHttp'
 import { cn, displayHost } from '@/lib/utils'
+import { useContextMenu } from '@/hooks/useContextMenu'
+import { useConverterStore } from '@/store/converter'
+import { useNavigate } from 'react-router-dom'
+
+type ConverterSelectionDetail = {
+  text: string
+  x: number
+  y: number
+  canReplace?: boolean
+  replaceSelection?: (nextText: string) => void
+}
 
 export function ReplayPanel() {
+  const navigate = useNavigate()
   const { replayQueue, removeFromReplay, duplicateReplayItem, clearReplay } = useProxyStore()
   const autoContentLength = useReplayStore((state) => state.autoContentLength)
   const mode = useThemeStore((state) => state.mode)
   const fontSize = useThemeStore((state) => state.fontSize)
+  const sendToConverter = useConverterStore((state) => state.sendToConverter)
+  const { open: contextMenuOpen, openMenu, close: closeContextMenu, menuRef } = useContextMenu()
 
   const [selectedQueueId, setSelectedQueueId] = useState<number | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
@@ -30,15 +44,20 @@ export function ReplayPanel() {
   const [loading, setLoading] = useState(false)
   const [requestLoading, setRequestLoading] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [menuSelection, setMenuSelection] = useState('')
   const [decodedReplayBody, setDecodedReplayBody] = useState<DecodedBody | null>(null)
   const [packetHistory, setPacketHistory] = useState<Record<number, { entries: string[]; index: number }>>({})
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const lastMonacoSelectionRef = useRef<{ text: string; at: number } | null>(null)
 
   const selectedEntry = replayQueue.find((entry) => entry.queueId === selectedQueueId) ?? null
   const selectedReq = selectedEntry?.request ?? null
   const replayPresentation = decodedReplayBody ? presentBody(decodedReplayBody) : null
-  const replayBodyEmpty = !replayPresentation || replayPresentation.text.trim().length === 0
+  const replayPacketText = useMemo(() => {
+    if (!replay?.response) return ''
+    return buildRawResponsePacket(replay.response, replayPresentation?.text ?? decodeResponseBodyFallback(replay.response.body))
+  }, [replay?.response, replayPresentation?.text])
   const selectedHistory = selectedQueueId != null ? packetHistory[selectedQueueId] : undefined
   const canGoBack = Boolean(selectedHistory && selectedHistory.index > 0)
   const canGoForward = Boolean(selectedHistory && selectedHistory.index < selectedHistory.entries.length - 1)
@@ -221,6 +240,19 @@ export function ReplayPanel() {
     }
   }, [replay])
 
+  useEffect(() => {
+    const onCodeViewerSelection = (event: Event) => {
+      const custom = event as CustomEvent<{ text: string; x: number; y: number } | null>
+      const detail = custom.detail
+      if (!detail?.text?.trim()) return
+      lastMonacoSelectionRef.current = { text: detail.text, at: Date.now() }
+    }
+    window.addEventListener('pandora:converter-selection', onCodeViewerSelection as EventListener)
+    return () => {
+      window.removeEventListener('pandora:converter-selection', onCodeViewerSelection as EventListener)
+    }
+  }, [])
+
   const headerSubtitle = useMemo(() => {
     if (!selectedReq) return ''
     return `${displayHost(selectedReq.host, selectedReq.scheme)}${selectedReq.path}${selectedReq.query ? `?${selectedReq.query}` : ''}`
@@ -244,6 +276,80 @@ export function ReplayPanel() {
 
   const onMount: OnMount = (editor) => {
     editorRef.current = editor
+    const emitSelection = () => {
+      const model = editor.getModel()
+      const selection = editor.getSelection()
+      if (!model || !selection || selection.isEmpty()) {
+        dispatchConverterSelection(null)
+        return
+      }
+      const text = model.getValueInRange(selection)
+      if (!text.trim()) {
+        dispatchConverterSelection(null)
+        return
+      }
+      const endPos = selection.getEndPosition()
+      const visiblePos = editor.getScrolledVisiblePosition(endPos)
+      const node = editor.getDomNode()
+      if (!visiblePos || !node) {
+        dispatchConverterSelection(null)
+        return
+      }
+      const rect = node.getBoundingClientRect()
+      dispatchConverterSelection({
+        text: text.slice(0, 25000),
+        x: rect.left + visiblePos.left,
+        y: rect.top + visiblePos.top + visiblePos.height + 8,
+        canReplace: true,
+        replaceSelection: (nextText: string) => {
+          const liveModel = editor.getModel()
+          const liveSelection = editor.getSelection()
+          if (!liveModel || !liveSelection) return
+          editor.executeEdits('converter-replace', [{
+            range: liveSelection,
+            text: nextText,
+            forceMoveMarkers: true,
+          }])
+          setRawRequest(liveModel.getValue())
+          editor.focus()
+        },
+      })
+    }
+
+    const selectionDisposable = editor.onDidChangeCursorSelection(emitSelection)
+    const blurDisposable = editor.onDidBlurEditorText(() => dispatchConverterSelection(null))
+    editor.onDidDispose(() => {
+      selectionDisposable.dispose()
+      blurDisposable.dispose()
+    })
+  }
+
+  const readRequestSelection = () => {
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    const selection = editor?.getSelection()
+    if (!model || !selection || selection.isEmpty()) return ''
+    return model.getValueInRange(selection)
+  }
+
+  const readResponseSelection = () => {
+    const latest = lastMonacoSelectionRef.current
+    if (latest && Date.now() - latest.at < 5000 && latest.text.trim()) return latest.text
+    return ''
+  }
+
+  const handleRequestContextMenuCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const selectedText = readRequestSelection()
+    if (!selectedText.trim()) return
+    setMenuSelection(selectedText.slice(0, 25000))
+    openMenu(event)
+  }
+
+  const handleResponseContextMenuCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const selectedText = readResponseSelection()
+    if (!selectedText.trim()) return
+    setMenuSelection(selectedText.slice(0, 25000))
+    openMenu(event)
   }
 
   const editorTheme = mode === 'dark' ? 'replay-dark' : 'replay-light'
@@ -405,35 +511,37 @@ export function ReplayPanel() {
                   </div>
                 ) : (
                   <div className="overflow-hidden rounded-2xl border border-border bg-card/70">
-                    <Editor
-                      height="420px"
-                      language="http-request"
-                      value={rawRequest}
-                      onChange={(value) => setRawRequest(value ?? '')}
-                      theme={editorTheme}
-                      beforeMount={defineTheme}
-                      onMount={onMount}
-                      options={{
-                        minimap: { enabled: false },
-                        lineNumbers: 'on',
-                        wordWrap: 'on',
-                        fontSize,
-                        fontFamily: 'var(--font-mono, monospace)',
-                        padding: { top: 12, bottom: 12 },
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        renderLineHighlight: 'line',
-                        overviewRulerLanes: 0,
-                        lineDecorationsWidth: 6,
-                        glyphMargin: false,
-                        scrollbar: {
-                          verticalScrollbarSize: 8,
-                          horizontalScrollbarSize: 8,
-                          alwaysConsumeMouseWheel: false,
-                        },
-                        contextmenu: true,
-                      }}
-                    />
+                    <div onContextMenuCapture={handleRequestContextMenuCapture}>
+                      <Editor
+                        height="420px"
+                        language="http-request"
+                        value={rawRequest}
+                        onChange={(value) => setRawRequest(value ?? '')}
+                        theme={editorTheme}
+                        beforeMount={defineTheme}
+                        onMount={onMount}
+                        options={{
+                          minimap: { enabled: false },
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          fontSize,
+                          fontFamily: 'var(--font-mono, monospace)',
+                          padding: { top: 12, bottom: 12 },
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                          renderLineHighlight: 'line',
+                          overviewRulerLanes: 0,
+                          lineDecorationsWidth: 6,
+                          glyphMargin: false,
+                          scrollbar: {
+                            verticalScrollbarSize: 8,
+                            horizontalScrollbarSize: 8,
+                            alwaysConsumeMouseWheel: false,
+                          },
+                          contextmenu: false,
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -470,17 +578,13 @@ export function ReplayPanel() {
                         </div>
                       )}
 
-                      {replayBodyEmpty ? (
-                        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
-                          Empty body
-                        </div>
-                      ) : (
+                      <div onContextMenuCapture={handleResponseContextMenuCapture}>
                         <CodeViewer
-                          value={replayPresentation.text}
-                          language={replayPresentation.language}
+                          value={replayPacketText}
+                          language="http-request"
                           maxHeight={900}
                         />
-                      )}
+                      </div>
                     </div>
                   ) : replay?.error ? (
                     <div className="text-sm text-red-400">{replay.error}</div>
@@ -497,6 +601,83 @@ export function ReplayPanel() {
           </div>
         )}
       </div>
+
+      {contextMenuOpen && menuSelection && (
+        <div
+          ref={menuRef}
+          className="fixed z-[70] min-w-[220px] rounded-md border border-border bg-popover shadow-xl py-1"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}
+        >
+          <button
+            className="w-full text-left px-3 py-2 text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              navigator.clipboard.writeText(menuSelection).catch(() => {})
+              closeContextMenu()
+            }}
+          >
+            Copy Selection
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 text-xs hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              sendToConverter(menuSelection)
+              navigate('/converter')
+              closeContextMenu()
+            }}
+          >
+            Send Selection to Converter
+          </button>
+        </div>
+      )}
     </div>
   )
+}
+
+function dispatchConverterSelection(detail: ConverterSelectionDetail | null) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('pandora:converter-selection', { detail }))
+}
+
+function buildRawResponsePacket(response: Response, bodyText: string): string {
+  const statusText = response.status_text?.trim() || 'OK'
+  const lines: string[] = [`HTTP/1.1 ${response.status_code} ${statusText}`]
+  const headers = parseHeaders(response.headers)
+  for (const [name, values] of Object.entries(headers)) {
+    for (const value of values) {
+      lines.push(`${name}: ${value}`)
+    }
+  }
+  return `${lines.join('\r\n')}\r\n\r\n${bodyText}`
+}
+
+function parseHeaders(raw: string): Record<string, string[]> {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const out: Record<string, string[]> = {}
+    for (const [name, value] of Object.entries(parsed)) {
+      if (Array.isArray(value)) {
+        out[name] = value.map((v) => String(v))
+      } else if (value != null) {
+        out[name] = [String(value)]
+      }
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function decodeResponseBodyFallback(body: Response['body']): string {
+  if (!body) return ''
+  if (Array.isArray(body)) {
+    return new TextDecoder().decode(Uint8Array.from(body))
+  }
+  try {
+    const binary = atob(body)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return body
+  }
 }
