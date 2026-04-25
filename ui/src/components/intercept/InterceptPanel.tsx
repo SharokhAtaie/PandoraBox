@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import Editor, { type BeforeMount } from '@monaco-editor/react'
 import { registerHttpLanguage, httpTokenRules } from '@/lib/httpLanguage'
+import { detectGraphQLPacket } from '@/lib/graphql'
+import { GraphQLEditorPanel } from '@/components/graphql/GraphQLEditorPanel'
 import { api } from '@/api/client'
 import type { InterceptFilter, InterceptQueueItem } from '@/api/client'
 import { decodeBodyForDisplay } from '@/lib/httpBodies'
-import { getRawRequestText } from '@/lib/rawHttp'
+import { applyAutomaticContentLength, getRawRequestText } from '@/lib/rawHttp'
 import { useProxyStore } from '@/store/proxy'
 import { useThemeStore } from '@/store/theme'
 import { MethodBadge } from '@/components/common/MethodBadge'
@@ -182,7 +184,9 @@ export function InterceptPanel() {
   }
 
   async function forward(id: number) {
-    const content = editContentRef.current
+    const content = selected?.kind === 'request'
+      ? applyAutomaticContentLength(editContentRef.current)
+      : editContentRef.current
     const isSelected = selected?.request_id === id
     const canEditHeldPacket = selected?.kind !== 'response' || responseViewTab === 'packet'
     const shouldModify = Boolean(isSelected && canEditHeldPacket && content !== baseContentRef.current)
@@ -231,6 +235,8 @@ export function InterceptPanel() {
   }
 
   const editorTheme = mode === 'dark' ? 'intercept-dark' : 'intercept-light'
+  const showingReadOnlyRequest = selected?.kind === 'response' && responseViewTab === 'request'
+  const hasGraphQLEditor = selected ? Boolean(detectGraphQLPacket(editContent)) : false
 
   return (
     <div className="flex flex-col h-full">
@@ -384,36 +390,49 @@ export function InterceptPanel() {
               </div>
 
               {/* Monaco editor */}
-              <div className="flex-1 min-h-0">
-                <Editor
-                  height="100%"
-                  language="http-request"
-                  value={editContent}
-                  onChange={(v) => setEditContent(v ?? '')}
-                  theme={editorTheme}
-                  beforeMount={defineTheme}
-                  options={{
-                    minimap: { enabled: false },
-                    lineNumbers: 'on',
-                    wordWrap: 'on',
-                    readOnly: selected.kind === 'response' && responseViewTab === 'request',
-                    fontSize,
-                    fontFamily: 'var(--font-mono, monospace)',
-                    padding: { top: 12, bottom: 12 },
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    renderLineHighlight: 'line',
-                    overviewRulerLanes: 0,
-                    lineDecorationsWidth: 6,
-                    glyphMargin: false,
-                    scrollbar: {
-                      verticalScrollbarSize: 8,
-                      horizontalScrollbarSize: 8,
-                      alwaysConsumeMouseWheel: false,
-                    },
-                    contextmenu: true,
-                  }}
-                />
+              <div className="flex-1 min-h-0 flex flex-col">
+                {hasGraphQLEditor ? (
+                  <div className="flex-1 min-h-0 overflow-auto bg-card/30 p-3">
+                    <GraphQLEditorPanel
+                      rawPacket={editContent}
+                      onChange={setEditContent}
+                      readOnly={showingReadOnlyRequest}
+                      includeFullPacket
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 min-h-[320px]">
+                    <Editor
+                      height="100%"
+                      language="http-request"
+                      value={editContent}
+                      onChange={(v) => setEditContent(v ?? '')}
+                      theme={editorTheme}
+                      beforeMount={defineTheme}
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        readOnly: showingReadOnlyRequest,
+                        fontSize,
+                        fontFamily: 'var(--font-mono, monospace)',
+                        padding: { top: 12, bottom: 12 },
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        renderLineHighlight: 'line',
+                        overviewRulerLanes: 0,
+                        lineDecorationsWidth: 6,
+                        glyphMargin: false,
+                        scrollbar: {
+                          verticalScrollbarSize: 8,
+                          horizontalScrollbarSize: 8,
+                          alwaysConsumeMouseWheel: false,
+                        },
+                        contextmenu: true,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </>
           ) : (

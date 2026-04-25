@@ -20,6 +20,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/hamedsj5/pandorabox/internal/storage"
+	"github.com/klauspost/compress/zstd"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -92,8 +93,21 @@ func brotliDecodeBody(body []byte) ([]byte, bool) {
 	return out, true
 }
 
+func zstdDecodeBody(body []byte) ([]byte, bool) {
+	r, err := zstd.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, false
+	}
+	defer r.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
 // decodeBody decompresses body bytes based on the Content-Encoding header.
-// Supports gzip, deflate, and br. For stacked encodings (e.g. "gzip, br"),
+// Supports gzip, deflate, br, and zstd. For stacked encodings (e.g. "gzip, br"),
 // decoding is applied in reverse order.
 func decodeBody(body []byte, headersJSON string) []byte {
 	if len(body) == 0 {
@@ -123,6 +137,12 @@ func decodeBody(body []byte, headersJSON string) []byte {
 			decoded = out
 		case "br":
 			out, ok := brotliDecodeBody(decoded)
+			if !ok {
+				return body
+			}
+			decoded = out
+		case "zstd":
+			out, ok := zstdDecodeBody(decoded)
 			if !ok {
 				return body
 			}
@@ -215,13 +235,13 @@ func safeFilePath(urlPath string) string {
 
 func (s *Server) registerAnalysisTools() {
 	s.mcp.AddTool(mcp.NewTool("export_responses",
-		mcp.WithDescription(`Export captured HTTP response bodies to the local filesystem. Each response is written as a file under dest_dir/{host}/{path}. Optionally decompress gzip/deflate-encoded bodies before writing.`),
+		mcp.WithDescription(`Export captured HTTP response bodies to the local filesystem. Each response is written as a file under dest_dir/{host}/{path}. Optionally decompress gzip/deflate/br/zstd-encoded bodies before writing.`),
 		mcp.WithString("dest_dir", mcp.Description("Local directory path to write files into"), mcp.Required()),
 		mcp.WithString("host", mcp.Description("Filter by host (substring match)")),
 		mcp.WithString("content_type", mcp.Description("Filter by Content-Type substring (e.g. \"javascript\", \"html\")")),
 		mcp.WithNumber("status_min", mcp.Description("Minimum response status code")),
 		mcp.WithNumber("status_max", mcp.Description("Maximum response status code")),
-		mcp.WithBoolean("decoded", mcp.Description("Decompress gzip/deflate bodies before writing (default true)")),
+		mcp.WithBoolean("decoded", mcp.Description("Decompress gzip/deflate/br/zstd bodies before writing (default true)")),
 	), s.toolExportResponses)
 
 	s.mcp.AddTool(mcp.NewTool("grep_responses",

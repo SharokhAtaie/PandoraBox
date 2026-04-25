@@ -9,12 +9,14 @@ import { useThemeStore } from '@/store/theme'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { CodeViewer } from '@/components/common/CodeViewer'
+import { GraphQLEditorPanel } from '@/components/graphql/GraphQLEditorPanel'
 import { registerHttpLanguage, httpTokenRules } from '@/lib/httpLanguage'
 import { Send, RotateCcw, Trash2, Plus, FileCode2, ChevronLeft, ChevronRight, CopyPlus, Paperclip } from 'lucide-react'
 import { subscribeShortcutAction } from '@/lib/shortcuts'
 import { decodeBodyForDisplay, type DecodedBody } from '@/lib/httpBodies'
 import { presentBody } from '@/lib/bodyPresentation'
 import { applyAutomaticContentLength, encodeRawRequest, getRawRequestText } from '@/lib/rawHttp'
+import { detectGraphQLPacket } from '@/lib/graphql'
 import { cn, displayHost } from '@/lib/utils'
 import { useContextMenu } from '@/hooks/useContextMenu'
 import { useConverterStore } from '@/store/converter'
@@ -61,6 +63,7 @@ export function ReplayPanel() {
   const selectedHistory = selectedQueueId != null ? packetHistory[selectedQueueId] : undefined
   const canGoBack = Boolean(selectedHistory && selectedHistory.index > 0)
   const canGoForward = Boolean(selectedHistory && selectedHistory.index < selectedHistory.entries.length - 1)
+  const hasGraphQLRequest = useMemo(() => Boolean(detectGraphQLPacket(rawRequest)), [rawRequest])
 
   async function sendReplay() {
     if (!selectedEntry) return
@@ -504,45 +507,55 @@ export function ReplayPanel() {
                 </div>
               </div>
 
-              <div className="p-4">
+              <div className="space-y-4 p-4">
                 {requestLoading ? (
                   <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-5 py-10 text-sm text-muted-foreground">
                     Loading request packet...
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-2xl border border-border bg-card/70">
-                    <div onContextMenuCapture={handleRequestContextMenuCapture}>
-                      <Editor
-                        height="420px"
-                        language="http-request"
-                        value={rawRequest}
-                        onChange={(value) => setRawRequest(value ?? '')}
-                        theme={editorTheme}
-                        beforeMount={defineTheme}
-                        onMount={onMount}
-                        options={{
-                          minimap: { enabled: false },
-                          lineNumbers: 'on',
-                          wordWrap: 'on',
-                          fontSize,
-                          fontFamily: 'var(--font-mono, monospace)',
-                          padding: { top: 12, bottom: 12 },
-                          scrollBeyondLastLine: false,
-                          automaticLayout: true,
-                          renderLineHighlight: 'line',
-                          overviewRulerLanes: 0,
-                          lineDecorationsWidth: 6,
-                          glyphMargin: false,
-                          scrollbar: {
-                            verticalScrollbarSize: 8,
-                            horizontalScrollbarSize: 8,
-                            alwaysConsumeMouseWheel: false,
-                          },
-                          contextmenu: false,
-                        }}
+                  <>
+                    {hasGraphQLRequest ? (
+                      <GraphQLEditorPanel
+                        rawPacket={rawRequest}
+                        onChange={(next) => setRawRequest(next)}
+                        includeFullPacket
                       />
-                    </div>
-                  </div>
+                    ) : (
+                      <div className="overflow-hidden rounded-2xl border border-border bg-card/70">
+                        <div onContextMenuCapture={handleRequestContextMenuCapture}>
+                          <Editor
+                            height="420px"
+                            language="http-request"
+                            value={rawRequest}
+                            onChange={(value) => setRawRequest(value ?? '')}
+                            theme={editorTheme}
+                            beforeMount={defineTheme}
+                            options={{
+                              minimap: { enabled: false },
+                              lineNumbers: 'on',
+                              wordWrap: 'on',
+                              fontSize,
+                              fontFamily: 'var(--font-mono, monospace)',
+                              padding: { top: 12, bottom: 12 },
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              renderLineHighlight: 'line',
+                              overviewRulerLanes: 0,
+                              lineDecorationsWidth: 6,
+                              glyphMargin: false,
+                              scrollbar: {
+                                verticalScrollbarSize: 8,
+                                horizontalScrollbarSize: 8,
+                                alwaysConsumeMouseWheel: false,
+                              },
+                              contextmenu: false,
+                            }}
+                            onMount={onMount}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

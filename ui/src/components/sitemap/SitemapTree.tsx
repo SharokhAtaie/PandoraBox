@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Globe } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Globe, Trash2 } from 'lucide-react'
 import { MethodBadge } from '@/components/common/MethodBadge'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -14,6 +14,7 @@ interface SitemapTreeProps {
   onSelectRequest: (requestId: number) => void
   selectedIds: Set<number>
   onToggleSelect: (ids: number[], forceValue?: boolean) => void
+  onDeleteRequests: (ids: number[], label: string) => void
 }
 
 function formatBytes(size: number): string {
@@ -43,6 +44,7 @@ function BranchRow({
   onSelectRequest,
   selectedIds,
   onToggleSelect,
+  onDeleteRequests,
 }: {
   node: SitemapNode
   depth: number
@@ -52,13 +54,17 @@ function BranchRow({
   onSelectRequest: (requestId: number) => void
   selectedIds: Set<number>
   onToggleSelect: (ids: number[], forceValue?: boolean) => void
+  onDeleteRequests: (ids: number[], label: string) => void
 }) {
   const indent = depth * 16
 
   if (node.kind === 'request') {
     const request = node.request
+    const requestIds = node.requestIds
     const isSelected = selectedRequestId === request.id
-    const isChecked = selectedIds.has(request.id)
+    const selectedCount = requestIds.filter((id) => selectedIds.has(id)).length
+    const allSelected = requestIds.length > 0 && selectedCount === requestIds.length
+    const someSelected = selectedCount > 0 && !allSelected
 
     return (
       <div className="space-y-1">
@@ -77,12 +83,13 @@ function BranchRow({
               className="mt-1 text-muted-foreground"
               onClick={(e) => {
                 e.stopPropagation()
-                onToggleSelect([request.id])
+                onToggleSelect(requestIds, !allSelected)
               }}
             >
               <Checkbox
-                checked={isChecked}
-                onChange={() => onToggleSelect([request.id])}
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={() => onToggleSelect(requestIds, !allSelected)}
                 className="mt-0"
               />
             </span>
@@ -107,6 +114,24 @@ function BranchRow({
             </div>
             <span className="rounded-full border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               #{request.id}
+            </span>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDeleteRequests(requestIds, request.path || `request #${request.id}`)
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                e.stopPropagation()
+                onDeleteRequests(requestIds, request.path || `request #${request.id}`)
+              }}
+              className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+              title={`Delete ${requestIds.length === 1 ? 'request' : `${requestIds.length} requests`}`}
+            >
+              <Trash2 size={13} />
             </span>
           </button>
         </div>
@@ -164,6 +189,24 @@ function BranchRow({
             <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
               {node.requestCount} req
             </span>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDeleteRequests(leafIds, node.label)
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                e.stopPropagation()
+                onDeleteRequests(leafIds, node.label)
+              }}
+              className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+              title={`Delete ${leafIds.length} ${leafIds.length === 1 ? 'request' : 'requests'}`}
+            >
+              <Trash2 size={13} />
+            </span>
           </div>
         </button>
       </div>
@@ -181,6 +224,7 @@ function BranchRow({
               onSelectRequest={onSelectRequest}
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
+              onDeleteRequests={onDeleteRequests}
             />
           ))}
         </div>
@@ -197,6 +241,7 @@ export function SitemapTree({
   onSelectRequest,
   selectedIds,
   onToggleSelect,
+  onDeleteRequests,
 }: SitemapTreeProps) {
   if (tree.length === 0) {
     return (
@@ -223,6 +268,7 @@ export function SitemapTree({
           onSelectRequest={onSelectRequest}
           selectedIds={selectedIds}
           onToggleSelect={onToggleSelect}
+          onDeleteRequests={onDeleteRequests}
         />
       ))}
     </div>

@@ -258,6 +258,16 @@ When one or more requests are selected, an **Export N** dropdown appears:
 - **Export as JSON** — PandoraBox's own JSON format with base64-encoded bodies. Useful for scripting or archival.
 - **Export as HAR** — HTTP Archive 1.2 format. Import into Burp Suite, browser DevTools, or other HTTP analysis tools.
 
+### Deleting From SiteMap
+
+The SiteMap supports deleting traffic directly from the tree.
+
+- Click the trash action on a host or path segment to delete all captured requests under that branch.
+- Click the trash action on a request leaf to delete every captured occurrence represented by that route leaf.
+- Select multiple entries with checkboxes and use **Delete** in the tree toolbar to delete them in bulk.
+
+Deletes are permanent and also remove linked responses, replay records, and WebSocket frames.
+
 The export fetches full request + response data (including bodies) for each selected ID, then triggers a file download. Filename format: `pandora-export-YYYY-MM-DDTHH-MM-SS.{json|har}`.
 
 **JSON export format:**

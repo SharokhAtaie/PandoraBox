@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ChevronDown, Filter, Globe, Network, Waypoints } from 'lucide-react'
+import { Activity, ChevronDown, Filter, Globe, Network, Trash2, Waypoints } from 'lucide-react'
 import { useRequests } from '@/hooks/useRequests'
 import { useProxyStore } from '@/store/proxy'
 import type { RequestFilters } from '@/store/proxy'
@@ -7,6 +7,7 @@ import { FilterModal } from '@/components/history/FilterModal'
 import { RequestInspector } from '@/components/inspector/RequestInspector'
 import { RequestWorkspaceLayout } from '@/components/layout/RequestWorkspaceLayout'
 import { SitemapTree } from '@/components/sitemap/SitemapTree'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { buildSitemapTree, collectBranchIds, countUniqueRoutes, getDefaultExpanded } from '@/lib/sitemap'
 import { countActiveFilters, filterRequests } from '@/lib/requestFilters'
 import { exportSelected } from '@/lib/sitemapExport'
@@ -58,6 +59,7 @@ export function SitemapPage() {
   useRequests()
 
   const requests = useProxyStore((state) => state.requests)
+  const removeRequests = useProxyStore((state) => state.removeRequests)
   const project = useProxyStore((state) => state.project)
   const [sitemapFilters, setSitemapFilters] = useState<RequestFilters>(SITEMAP_DEFAULT_FILTERS)
   const selectedRequestId = useProxyStore((state) => state.selectedRequestId)
@@ -73,6 +75,8 @@ export function SitemapPage() {
   const expansionInitialized = useRef(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: number[]; label: string } | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const filteredRequests = useMemo(() => filterRequests(requests, sitemapFilters), [requests, sitemapFilters])
   const tree = useMemo(() => buildSitemapTree(filteredRequests), [filteredRequests])
@@ -176,6 +180,34 @@ export function SitemapPage() {
     await exportSelected(Array.from(selectedIds), format, api.requests.get)
   }
 
+  function queueDelete(ids: number[], label: string) {
+    const uniqueIds = Array.from(new Set(ids))
+    if (uniqueIds.length === 0) return
+    setDeleteTarget({ ids: uniqueIds, label })
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    try {
+      await api.requests.deleteBulk(deleteTarget.ids)
+      removeRequests(deleteTarget.ids)
+      setSelectedIds((current) => {
+        const deleted = new Set(deleteTarget.ids)
+        const next = new Set<number>()
+        for (const id of current) {
+          if (!deleted.has(id)) next.add(id)
+        }
+        return next
+      })
+      setDeleteTarget(null)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.14),transparent_32%),radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_28%)]">
       <div className="overflow-auto px-5 pb-5 pt-5">
@@ -273,6 +305,15 @@ export function SitemapPage() {
                         </button>
                       )}
                       {selectedIds.size > 0 && (
+                        <button
+                          onClick={() => queueDelete(Array.from(selectedIds), `${selectedIds.size} selected`)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/15"
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
+                      )}
+                      {selectedIds.size > 0 && (
                         <div className="relative">
                           <button
                             onClick={(e) => { e.stopPropagation(); setExportMenuOpen((v) => !v) }}
@@ -316,6 +357,7 @@ export function SitemapPage() {
                       onSelectRequest={setSelectedRequestId}
                       selectedIds={selectedIds}
                       onToggleSelect={onToggleSelect}
+                      onDeleteRequests={queueDelete}
                     />
                   </div>
                 </div>
@@ -335,6 +377,15 @@ export function SitemapPage() {
         onClose={() => setFilterModalOpen(false)}
         externalFilters={sitemapFilters}
         onApply={setSitemapFilters}
+      />
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={`Delete ${deleteTarget?.ids.length ?? 0} ${deleteTarget?.ids.length === 1 ? 'request' : 'requests'}?`}
+        description={`This will permanently remove ${deleteTarget?.label ?? 'the selected sitemap entries'}, including linked responses, replay records, and WebSocket frames.`}
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   )

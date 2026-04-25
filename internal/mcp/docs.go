@@ -63,6 +63,14 @@ var docPages = []docPage{
 		File:        "docs/flows.md",
 		Aliases:     []string{"flow", "workflows"},
 	},
+	{
+		ID:          "coding-api",
+		Title:       "PandoraBox Coding API Guide",
+		Description: "How to call PandoraBox capabilities from scripts using REST endpoints and the MCP-compatible tool-call API facade.",
+		URI:         "docs://pandorabox/coding-api",
+		File:        "docs/coding-api.md",
+		Aliases:     []string{"api", "rest", "http-api", "code", "programming"},
+	},
 }
 
 func (s *Server) registerDocs() {
@@ -142,7 +150,7 @@ func (s *Server) toolListDocs(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	return jsonResult(map[string]interface{}{
 		"topics": listDocTopics(),
-		"hint":   `Use get_doc with one of the topic ids above. Start with "tools", then read "middleware" or "flows" when writing those features.`,
+		"hint":   `Use get_doc with one of the topic ids above. Start with "tools"; read "coding-api" for script/API access, and "middleware" or "flows" when writing those features.`,
 	})
 }
 

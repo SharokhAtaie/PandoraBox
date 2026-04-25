@@ -16,7 +16,7 @@ Reads one built-in document by topic id.
 
 Arguments:
 
-- `topic` or `id`: one of `overview`, `tools`, `project-schemas`, `middleware`, `flows`
+- `topic` or `id`: one of `overview`, `tools`, `project-schemas`, `coding-api`, `middleware`, `flows`
 
 Example:
 
@@ -69,7 +69,7 @@ Arguments:
 - `limit` — default 20; capped at 50 when `include_decoded_body` is true
 - `offset`
 - `user_id` — filter by team member user ID (team mode only)
-- `include_decoded_body` — boolean; if true, adds `decoded_response_body` (plain UTF-8 string, decompressed) to each result
+- `include_decoded_body` — boolean; if true, adds `decoded_response_body` and `readable_response_body` (plain UTF-8 string, decompressed) to each result
 
 Returns a `requests` array and `total`.
 
@@ -90,7 +90,7 @@ Gets one full request record, including response details if present.
 Arguments:
 
 - `id` required
-- `decoded` — boolean; if true, adds `decoded_body` (plain UTF-8 string) to both the request and response objects; decompresses gzip/deflate automatically
+- `decoded` — boolean; if true, adds `decoded_body` and `readable_body` (plain UTF-8 string) to both the request and response objects; decompresses gzip/deflate/br/zstd automatically
 
 ### `get_websocket_session`
 
@@ -136,6 +136,7 @@ Arguments:
 - `url` required
 - `body`
 - `headers_json`
+- `decoded` — defaults to true; adds `readable_response_body` and nested response `readable_body`, decompressing gzip/deflate/br/zstd
 
 Example:
 
@@ -158,6 +159,7 @@ Arguments:
 - `modified_url`
 - `modified_body`
 - `modified_headers_json`
+- `decoded` — defaults to true; adds `readable_response_body` and nested response `readable_body`, decompressing gzip/deflate/br/zstd
 
 Example:
 
@@ -363,13 +365,41 @@ Arguments:
 
 This is the MCP-friendly version of the UI SiteMap.
 
+### `delete_sitemap_requests`
+
+Deletes one or more captured requests from the SiteMap by request ID.
+
+Arguments:
+
+- `ids_json` — required JSON array of request IDs, e.g. `[12,13,14]`
+
+Returns:
+
+```json
+{ "success": true, "deleted_ids": [12, 13, 14], "deleted": 3 }
+```
+
+### `delete_sitemap_host`
+
+Deletes all captured requests for an exact SiteMap host.
+
+Arguments:
+
+- `host` — required exact host as shown in the SiteMap, e.g. `api.example.com`
+
+Returns:
+
+```json
+{ "success": true, "host": "api.example.com", "deleted_ids": [12, 13, 14], "deleted": 3 }
+```
+
 ## Response Analysis
 
 These tools work directly on captured response bodies and headers. They are designed for security research workflows: source code review, secret/pattern detection, and header auditing.
 
 ### `get_request` with `decoded: true`
 
-When you need to read the response body as plain text, pass `decoded: true` to `get_request`. The result includes an extra `decoded_body` field on both the request and response objects — a UTF-8 string with gzip/deflate decompressed automatically.
+When you need to read the response body as plain text, pass `decoded: true` to `get_request`. The result includes extra `decoded_body` and `readable_body` fields on both the request and response objects — UTF-8 strings with gzip/deflate/br/zstd decompressed automatically.
 
 ```json
 {
@@ -389,7 +419,7 @@ Filter requests to a specific content type and return bodies inline:
 }
 ```
 
-Returns each request with a `decoded_response_body` field — UTF-8 text, decompressed.
+Returns each request with `decoded_response_body` and `readable_response_body` fields — UTF-8 text, decompressed.
 
 ### `grep_responses`
 
@@ -440,7 +470,7 @@ Arguments:
 - `host` — filter by host
 - `content_type` — filter by Content-Type substring
 - `status_min`, `status_max` — filter by status code range
-- `decoded` — decompress gzip/deflate before writing (default `true`)
+- `decoded` — decompress gzip/deflate/br/zstd before writing (default `true`)
 
 Returns:
 

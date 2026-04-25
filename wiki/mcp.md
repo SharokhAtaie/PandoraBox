@@ -19,6 +19,10 @@ All tools return JSON. All tools check whether MCP is enabled for the current pr
   - [get_request](#get_request)
   - [search_requests](#search_requests)
   - [delete_request](#delete_request)
+- [SiteMap](#sitemap)
+  - [get_sitemap](#get_sitemap)
+  - [delete_sitemap_requests](#delete_sitemap_requests)
+  - [delete_sitemap_host](#delete_sitemap_host)
 - [Replay](#replay)
   - [replay_request](#replay_request)
   - [send_request](#send_request)
@@ -134,6 +138,7 @@ Lists captured HTTP requests with optional filters and pagination. Returns the m
 | `limit` | number | No | Maximum number of results to return (default: `20`) |
 | `offset` | number | No | Pagination offset (default: `0`) |
 | `user_id` | string | No | Filter by team member user ID (team mode only) |
+| `include_decoded_body` | boolean | No | Add `decoded_response_body` and `readable_response_body`; decompresses gzip/deflate/br/zstd |
 
 **Returns:**
 ```json
@@ -169,6 +174,7 @@ Lists captured HTTP requests with optional filters and pagination. Returns the m
 
 **Notes:**
 - `headers` is a JSON string containing `Record<string, string[]>`.
+- Response bodies are still returned in `body` as base64 for fidelity. Use `include_decoded_body: true` to get `readable_response_body`.
 - `body` is base64-encoded when binary, or a plain string for text.
 - `response` is `null` if no response has been captured yet.
 - `tags` is a JSON array (e.g. `["websocket"]` for WebSocket connections).
@@ -189,6 +195,7 @@ Fetches a single request by ID with full headers and body.
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `id` | number | **Yes** | The request ID |
+| `decoded` | boolean | No | Add `decoded_body` and `readable_body` fields; decompresses gzip/deflate/br/zstd |
 
 **Returns:** A single request object (same shape as entries in `list_requests`).
 
@@ -242,6 +249,62 @@ Permanently deletes a request and its associated response from the database.
 
 ---
 
+## SiteMap
+
+### get_sitemap
+
+Builds a SiteMap tree from captured requests.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `host` | string | No | Filter by host |
+| `method` | string | No | Filter by HTTP method |
+| `search` | string | No | Search in host, path, or query |
+| `status_min` | number | No | Minimum response status code |
+| `status_max` | number | No | Maximum response status code |
+| `in_scope_only` | boolean | No | Restrict output to requests matching current scope rules |
+| `user_id` | string | No | Restrict to one team member's traffic |
+
+**Returns:** SiteMap tree plus host, route, request, and response counts.
+
+---
+
+### delete_sitemap_requests
+
+Deletes one or more captured requests from the SiteMap by request ID.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `ids_json` | string | **Yes** | JSON array of request IDs, e.g. `[12,13,14]` |
+
+**Returns:**
+```json
+{ "success": true, "deleted_ids": [12, 13, 14], "deleted": 3 }
+```
+
+---
+
+### delete_sitemap_host
+
+Deletes all captured requests for an exact SiteMap host.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `host` | string | **Yes** | Exact host as shown in the SiteMap |
+
+**Returns:**
+```json
+{ "success": true, "host": "api.example.com", "deleted_ids": [12, 13, 14], "deleted": 3 }
+```
+
+---
+
 ## Replay
 
 ### replay_request
@@ -256,6 +319,7 @@ Replays a previously captured request. Optionally override the URL, headers, or 
 | `modified_url` | string | No | Override the full URL (e.g. `"https://api.example.com/v2/login"`) |
 | `modified_body` | string | No | Override the request body (plain string) |
 | `modified_headers_json` | string | No | JSON object of header overrides (e.g. `"{\"X-Custom\": \"value\"}"`) |
+| `decoded` | boolean | No | Defaults to `true`; adds `readable_response_body` and nested response `readable_body` |
 
 **Returns:** A Replay object:
 ```json
@@ -268,7 +332,8 @@ Replays a previously captured request. Optionally override the URL, headers, or 
   "error": "",
   "created_at": "2024-01-15T10:35:00Z",
   "request": { /* full request */ },
-  "response": { /* full response */ }
+  "response": { /* full response with readable_body when decoded */ },
+  "readable_response_body": "{\"success\":true}"
 }
 ```
 
@@ -296,6 +361,7 @@ Sends a completely new HTTP request through the proxy. The request and response 
 | `url` | string | **Yes** | Full target URL (e.g. `"https://api.example.com/users"`) |
 | `body` | string | No | Request body |
 | `headers_json` | string | No | JSON object of request headers (e.g. `"{\"Content-Type\": \"application/json\"}"`) |
+| `decoded` | boolean | No | Defaults to `true`; adds `readable_response_body` and nested response `readable_body` |
 
 **Returns:** A Replay object (same shape as `replay_request`).
 

@@ -12,6 +12,7 @@ All endpoints return JSON. Error responses use HTTP 4xx/5xx with a plain-text bo
 - [Traffic](#traffic)
 - [Intercept](#intercept)
 - [Replay](#replay)
+- [Coding Tool API](#coding-tool-api)
 - [Project](#project)
 - [Certificate](#certificate)
 - [WebSocket Event Stream](#websocket-event-stream)
@@ -166,6 +167,22 @@ Permanently deletes a request and its associated response.
 **Response:**
 ```json
 { "success": true }
+```
+
+---
+
+### `POST /api/requests/delete-bulk`
+
+Permanently deletes multiple requests and their associated responses.
+
+**Request body:**
+```json
+{ "ids": [12, 13, 14] }
+```
+
+**Response:**
+```json
+{ "success": true, "deleted_ids": [12, 13, 14] }
 ```
 
 ---
@@ -362,6 +379,42 @@ All fields except `request_id` are optional. If `raw` is provided, it overrides 
 Fetches a replay result with the associated request and response.
 
 **Response:** Replay object (same shape as `POST /api/replay` response).
+
+---
+
+## Coding Tool API
+
+### `GET /api/tools`
+
+Lists all MCP tools that can be called through the coding API facade.
+
+**Response:** Parsed MCP `tools/list` result.
+
+---
+
+### `POST /api/tools/{name}`
+
+Calls any PandoraBox MCP tool through a normal HTTP API request.
+
+**Request body:**
+```json
+{
+  "arguments": {
+    "limit": 5,
+    "include_decoded_body": true
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "result": {},
+  "mcp": {}
+}
+```
+
+`result` is parsed JSON when the underlying MCP tool returns JSON text. `mcp` contains the original MCP `CallToolResult`.
 
 ---
 

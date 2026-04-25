@@ -7,6 +7,7 @@ export function registerHttpLanguage(monaco: typeof Monaco): void {
   registered = true
 
   monaco.languages.register({ id: 'http-request' })
+  monaco.languages.register({ id: 'graphql' })
 
   monaco.languages.setMonarchTokensProvider('http-request', {
     defaultToken: '',
@@ -85,6 +86,8 @@ export function registerHttpLanguage(monaco: typeof Monaco): void {
 
       // ── Body — auto-detects JSON / XML / form-urlencoded ────────────────────
       body: [
+        // Raw GraphQL documents
+        [/^\s*(query|mutation|subscription|fragment)\b/, { token: 'graphql.keyword', next: '@graphql' }],
         // JSON object
         [/^\s*\{/, { token: 'delimiter.curly', next: '@json_object' }],
         // JSON array
@@ -150,6 +153,41 @@ export function registerHttpLanguage(monaco: typeof Monaco): void {
         [/-->/, { token: 'comment', next: '@pop' }],
         [/./, 'comment'],
       ],
+
+      // ── GraphQL ─────────────────────────────────────────────────────────────
+      graphql: [
+        [/\b(query|mutation|subscription|fragment|on|schema|type|interface|union|enum|input|extend|directive)\b/, 'graphql.keyword'],
+        [/\$[_A-Za-z][_0-9A-Za-z]*/, 'graphql.variable'],
+        [/@[_A-Za-z][_0-9A-Za-z]*/, 'graphql.directive'],
+        [/[!:=|&]/, 'graphql.operator'],
+        [/[{}()[\],]/, 'delimiter'],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
+        [/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, 'number'],
+        [/\b(true|false|null)\b/, 'keyword'],
+        [/[_A-Za-z][_0-9A-Za-z]*/, 'graphql.name'],
+        [/#.*$/, 'comment'],
+        [/\s+/, ''],
+      ],
+    },
+  } as Monaco.languages.IMonarchLanguage)
+
+  monaco.languages.setMonarchTokensProvider('graphql', {
+    defaultToken: '',
+    tokenizer: {
+      root: [
+        [/\b(query|mutation|subscription|fragment|on|schema|type|interface|union|enum|input|extend|directive)\b/, 'graphql.keyword'],
+        [/\$[_A-Za-z][_0-9A-Za-z]*/, 'graphql.variable'],
+        [/@[_A-Za-z][_0-9A-Za-z]*/, 'graphql.directive'],
+        [/[!:=|&]/, 'graphql.operator'],
+        [/[{}()[\],]/, 'delimiter'],
+        [/"""[\s\S]*?"""/, 'string'],
+        [/"(?:[^"\\]|\\.)*"/, 'string'],
+        [/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, 'number'],
+        [/\b(true|false|null)\b/, 'keyword'],
+        [/[_A-Za-z][_0-9A-Za-z]*/, 'graphql.name'],
+        [/#.*$/, 'comment'],
+        [/\s+/, ''],
+      ],
     },
   } as Monaco.languages.IMonarchLanguage)
 }
@@ -180,6 +218,11 @@ export function httpTokenRules(mode: 'dark' | 'light'): Monaco.editor.ITokenThem
       { token: 'cookie.eq',           foreground: '8b949e' },
       { token: 'cookie.value',        foreground: 'a5d6ff' },
       { token: 'cookie.sep',          foreground: '8b949e' },
+      { token: 'graphql.keyword',     foreground: 'ff7b72', fontStyle: 'bold' },
+      { token: 'graphql.name',        foreground: 'c9d1d9' },
+      { token: 'graphql.variable',    foreground: 'ffa657' },
+      { token: 'graphql.directive',   foreground: 'd2a8ff' },
+      { token: 'graphql.operator',    foreground: '79c0ff' },
       { token: 'tag',                 foreground: '7ee787' },
       { token: 'metatag',             foreground: '8b949e' },
       { token: 'attribute.name',      foreground: 'ffa657' },
@@ -212,6 +255,11 @@ export function httpTokenRules(mode: 'dark' | 'light'): Monaco.editor.ITokenThem
     { token: 'cookie.eq',           foreground: '6e7781' },
     { token: 'cookie.value',        foreground: '0a3069' },
     { token: 'cookie.sep',          foreground: '6e7781' },
+    { token: 'graphql.keyword',     foreground: 'cf222e', fontStyle: 'bold' },
+    { token: 'graphql.name',        foreground: '1f2328' },
+    { token: 'graphql.variable',    foreground: '953800' },
+    { token: 'graphql.directive',   foreground: '8250df' },
+    { token: 'graphql.operator',    foreground: '0550ae' },
     { token: 'tag',                 foreground: '116329' },
     { token: 'metatag',             foreground: '6e7781' },
     { token: 'attribute.name',      foreground: '953800' },

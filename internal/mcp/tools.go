@@ -63,7 +63,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("get_request",
 		mcp.WithDescription("Get full request and response details"),
 		mcp.WithNumber("id", mcp.Description("Request ID"), mcp.Required()),
-		mcp.WithBoolean("decoded", mcp.Description("If true, add decoded_body (UTF-8 string) to request and response, decompressing gzip/deflate")),
+		mcp.WithBoolean("decoded", mcp.Description("If true, add decoded_body/readable_body (UTF-8 string) to request and response, decompressing gzip/deflate/br/zstd")),
 	), s.toolGetRequest)
 
 	// get_websocket_session
@@ -86,6 +86,7 @@ func (s *Server) registerTools() {
 		mcp.WithString("modified_url", mcp.Description("Override URL")),
 		mcp.WithString("modified_body", mcp.Description("Override body (string)")),
 		mcp.WithString("modified_headers_json", mcp.Description(`Optional JSON object of header overrides, e.g. {"X-Custom": "value"}`)),
+		mcp.WithBoolean("decoded", mcp.Description("If true or omitted, add readable_response_body to the replay result, decompressing gzip/deflate/br/zstd")),
 	), s.toolReplayRequest)
 
 	// send_request
@@ -95,6 +96,7 @@ func (s *Server) registerTools() {
 		mcp.WithString("url", mcp.Description("Target URL"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("Request body")),
 		mcp.WithString("headers_json", mcp.Description(`Optional JSON object of request headers, e.g. {"Authorization": "Bearer token"}`)),
+		mcp.WithBoolean("decoded", mcp.Description("If true or omitted, add readable_response_body to the captured result, decompressing gzip/deflate/br/zstd")),
 	), s.toolSendRequest)
 
 	// intercept_toggle
@@ -245,6 +247,18 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("in_scope_only", mcp.Description("Restrict the SiteMap to in-scope requests")),
 		mcp.WithString("user_id", mcp.Description("Restrict the SiteMap to one team member's traffic (team mode only)")),
 	), s.toolGetSitemap)
+
+	// delete_sitemap_requests
+	s.mcp.AddTool(mcp.NewTool("delete_sitemap_requests",
+		mcp.WithDescription("Delete one or more captured requests from the SiteMap by request IDs"),
+		mcp.WithString("ids_json", mcp.Description("JSON array of request IDs to delete, e.g. [12,13,14]"), mcp.Required()),
+	), s.toolDeleteSitemapRequests)
+
+	// delete_sitemap_host
+	s.mcp.AddTool(mcp.NewTool("delete_sitemap_host",
+		mcp.WithDescription("Delete all captured requests for an exact SiteMap host"),
+		mcp.WithString("host", mcp.Description("Exact host value as shown in the SiteMap"), mcp.Required()),
+	), s.toolDeleteSitemapHost)
 
 	// list_recent_projects
 	s.mcp.AddTool(mcp.NewTool("list_recent_projects",
@@ -438,7 +452,8 @@ func (s *Server) toolListRequests(ctx context.Context, req mcp.CallToolRequest) 
 	// Augment each result with a decoded response body by fetching full records.
 	type augmented struct {
 		*storage.Request
-		DecodedResponseBody string `json:"decoded_response_body,omitempty"`
+		DecodedResponseBody  string `json:"decoded_response_body,omitempty"`
+		ReadableResponseBody string `json:"readable_response_body,omitempty"`
 	}
 	aug := make([]augmented, 0, len(requests))
 	for _, r := range requests {
@@ -451,7 +466,7 @@ func (s *Server) toolListRequests(ctx context.Context, req mcp.CallToolRequest) 
 		if full.Response != nil {
 			decoded = toUTF8(decodeBody(full.Response.Body, full.Response.Headers))
 		}
-		aug = append(aug, augmented{Request: full, DecodedResponseBody: decoded})
+		aug = append(aug, augmented{Request: full, DecodedResponseBody: decoded, ReadableResponseBody: decoded})
 	}
 
 	return jsonResult(map[string]interface{}{
@@ -487,12 +502,16 @@ func (s *Server) toolGetRequest(ctx context.Context, req mcp.CallToolRequest) (*
 	var m map[string]interface{}
 	_ = json.Unmarshal(data, &m)
 
-	m["decoded_body"] = toUTF8(r.Body)
+	requestBody := toUTF8(r.Body)
+	m["decoded_body"] = requestBody
+	m["readable_body"] = requestBody
 
 	if r.Response != nil {
 		decompressed := decodeBody(r.Response.Body, r.Response.Headers)
 		if respMap, ok := m["response"].(map[string]interface{}); ok {
-			respMap["decoded_body"] = toUTF8(decompressed)
+			responseBody := toUTF8(decompressed)
+			respMap["decoded_body"] = responseBody
+			respMap["readable_body"] = responseBody
 		}
 	}
 
@@ -547,6 +566,50 @@ func (s *Server) toolGetWebSocketFrames(ctx context.Context, req mcp.CallToolReq
 	})
 }
 
+func augmentRequestWithReadable(r *storage.Request) map[string]interface{} {
+	if r == nil {
+		return map[string]interface{}{}
+	}
+	data, _ := json.Marshal(r)
+	var out map[string]interface{}
+	_ = json.Unmarshal(data, &out)
+	requestBody := toUTF8(r.Body)
+	out["decoded_body"] = requestBody
+	out["readable_body"] = requestBody
+	if r.Response != nil {
+		responseBody := toUTF8(decodeBody(r.Response.Body, r.Response.Headers))
+		if respMap, ok := out["response"].(map[string]interface{}); ok {
+			respMap["decoded_body"] = responseBody
+			respMap["readable_body"] = responseBody
+		}
+		out["decoded_response_body"] = responseBody
+		out["readable_response_body"] = responseBody
+	}
+	return out
+}
+
+func augmentReplayWithReadable(replay *storage.Replay) map[string]interface{} {
+	if replay == nil {
+		return map[string]interface{}{}
+	}
+	data, _ := json.Marshal(replay)
+	var out map[string]interface{}
+	_ = json.Unmarshal(data, &out)
+	if replay.Request != nil {
+		out["request"] = augmentRequestWithReadable(replay.Request)
+	}
+	if replay.Response != nil {
+		responseBody := toUTF8(decodeBody(replay.Response.Body, replay.Response.Headers))
+		if respMap, ok := out["response"].(map[string]interface{}); ok {
+			respMap["decoded_body"] = responseBody
+			respMap["readable_body"] = responseBody
+		}
+		out["decoded_response_body"] = responseBody
+		out["readable_response_body"] = responseBody
+	}
+	return out
+}
+
 func (s *Server) toolReplayRequest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if !s.mcpEnabled() {
 		return nil, fmt.Errorf("MCP access is disabled for this project")
@@ -571,6 +634,10 @@ func (s *Server) toolReplayRequest(ctx context.Context, req mcp.CallToolRequest)
 			return nil, fmt.Errorf("modified_headers_json: %w", err)
 		}
 	}
+	decoded := true
+	if v, ok := args["decoded"].(bool); ok {
+		decoded = v
+	}
 
 	replay, err := s.proxy.ReplayRequest(int64(id), modHeaders, modBody, modURL, nil)
 	if replay != nil {
@@ -580,7 +647,10 @@ func (s *Server) toolReplayRequest(ctx context.Context, req mcp.CallToolRequest)
 		return nil, err
 	}
 
-	return jsonResult(replay)
+	if !decoded {
+		return jsonResult(replay)
+	}
+	return jsonResult(augmentReplayWithReadable(replay))
 }
 
 func (s *Server) toolSendRequest(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -598,13 +668,20 @@ func (s *Server) toolSendRequest(ctx context.Context, req mcp.CallToolRequest) (
 			return nil, fmt.Errorf("headers_json: %w", err)
 		}
 	}
+	decoded := true
+	if v, ok := args["decoded"].(bool); ok {
+		decoded = v
+	}
 
 	captured, err := s.proxy.SendRequest(method, url, headers, []byte(bodyStr))
 	if err != nil {
 		return nil, err
 	}
 
-	return jsonResult(captured)
+	if !decoded {
+		return jsonResult(captured)
+	}
+	return jsonResult(augmentRequestWithReadable(captured))
 }
 
 func (s *Server) toolInterceptToggle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -733,6 +810,60 @@ func (s *Server) toolDeleteRequest(ctx context.Context, req mcp.CallToolRequest)
 	s.publishRequestDeleted(int64(id))
 	s.publishProxyStatus()
 	return jsonResult(map[string]interface{}{"success": true})
+}
+
+func (s *Server) toolDeleteSitemapRequests(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if !s.mcpEnabled() {
+		return nil, fmt.Errorf("MCP access is disabled for this project")
+	}
+	raw, ok := req.Params.Arguments["ids_json"].(string)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil, fmt.Errorf("ids_json required")
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil, fmt.Errorf("ids_json: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("ids_json must contain at least one request ID")
+	}
+	if err := s.getDB().DeleteRequests(ids); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		s.publishRequestDeleted(id)
+	}
+	s.publishProxyStatus()
+	return jsonResult(map[string]interface{}{
+		"success":     true,
+		"deleted_ids": ids,
+		"deleted":     len(ids),
+	})
+}
+
+func (s *Server) toolDeleteSitemapHost(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if !s.mcpEnabled() {
+		return nil, fmt.Errorf("MCP access is disabled for this project")
+	}
+	host, ok := req.Params.Arguments["host"].(string)
+	host = strings.TrimSpace(host)
+	if !ok || host == "" {
+		return nil, fmt.Errorf("host required")
+	}
+	ids, err := s.getDB().DeleteRequestsByHost(host)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		s.publishRequestDeleted(id)
+	}
+	s.publishProxyStatus()
+	return jsonResult(map[string]interface{}{
+		"success":     true,
+		"host":        host,
+		"deleted_ids": ids,
+		"deleted":     len(ids),
+	})
 }
 
 func (s *Server) toolGetProject(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

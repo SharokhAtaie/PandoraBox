@@ -11,6 +11,8 @@ interface CodeViewerProps {
   onChange?: (value: string) => void
   minHeight?: number
   autoHeight?: boolean
+  scrollBeyondLastLine?: boolean
+  extraBottomLines?: number
 }
 
 type ConverterSelectionDetail = {
@@ -29,6 +31,8 @@ export function CodeViewer({
   onChange,
   minHeight = 140,
   autoHeight = true,
+  scrollBeyondLastLine = !readOnly,
+  extraBottomLines = 0,
 }: CodeViewerProps) {
   const mode = useThemeStore((state) => state.mode)
   const variant = useThemeStore((state) => state.variant)
@@ -53,7 +57,7 @@ export function CodeViewer({
 
   useEffect(() => {
     setEditorHeight(minHeight)
-  }, [value, language, resolvedTypography.fontSize, minHeight])
+  }, [language, resolvedTypography.fontSize, minHeight])
 
   const onMount: OnMount = (editor) => {
     const emitSelection = () => {
@@ -106,7 +110,8 @@ export function CodeViewer({
         editor.layout({ width: editor.getLayoutInfo().width, height: maxHeight })
         return
       }
-      const nextHeight = Math.max(minHeight, Math.min(editor.getContentHeight() + 2, maxHeight))
+      const spareHeight = Math.max(0, extraBottomLines) * lineHeight
+      const nextHeight = Math.max(minHeight, Math.min(editor.getContentHeight() + spareHeight + 2, maxHeight))
       setEditorHeight(nextHeight)
       editor.layout({ width: editor.getLayoutInfo().width, height: nextHeight })
     }
@@ -140,7 +145,7 @@ export function CodeViewer({
           lineNumbers: 'on',
           glyphMargin: false,
           folding: true,
-          scrollBeyondLastLine: !readOnly,
+          scrollBeyondLastLine,
           wordWrap: 'on',
           wrappingIndent: 'indent',
           automaticLayout: true,

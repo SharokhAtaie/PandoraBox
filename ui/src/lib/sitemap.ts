@@ -12,6 +12,7 @@ export interface SitemapBranchNode {
   fullPath: string
   requestCount: number
   responseCount: number
+  requestIds: number[]
   children: SitemapNode[]
 }
 
@@ -19,6 +20,7 @@ export interface SitemapRequestNode {
   id: string
   kind: 'request'
   request: Request
+  requestIds: number[]
   occurrenceCount: number
   responseCount: number
 }
@@ -32,6 +34,7 @@ interface MutableBranchNode {
   fullPath: string
   requestCount: number
   responseCount: number
+  requestIds: number[]
   branches: Map<string, MutableBranchNode>
   leaves: Map<string, SitemapRequestNode>
 }
@@ -44,6 +47,7 @@ function createBranch(kind: 'host' | 'segment', id: string, label: string, fullP
     fullPath,
     requestCount: 0,
     responseCount: 0,
+    requestIds: [],
     branches: new Map(),
     leaves: new Map(),
   }
@@ -69,6 +73,7 @@ function finalize(node: MutableBranchNode): SitemapBranchNode {
     fullPath: node.fullPath,
     requestCount: node.requestCount,
     responseCount: node.responseCount,
+    requestIds: node.requestIds,
     children,
   }
 }
@@ -91,6 +96,7 @@ export function buildSitemapTree(requests: Request[]): SitemapBranchNode[] {
 
     let cursor = hostNode
     let currentPath = ''
+    hostNode.requestIds.push(request.id)
 
     for (const part of parts) {
       currentPath += `/${part}`
@@ -100,12 +106,14 @@ export function buildSitemapTree(requests: Request[]): SitemapBranchNode[] {
         cursor.branches.set(part, branch)
       }
       cursor = branch
+      cursor.requestIds.push(request.id)
     }
 
     const routeKey = `${request.scheme}://${request.host}${request.path || '/'}`
     const existingLeaf = cursor.leaves.get(routeKey)
     if (existingLeaf) {
       existingLeaf.occurrenceCount += 1
+      existingLeaf.requestIds.push(request.id)
       if (request.response) existingLeaf.responseCount += 1
       const existingIs2xx = is2xx(existingLeaf.request)
       const newIs2xx = is2xx(request)
@@ -123,14 +131,15 @@ export function buildSitemapTree(requests: Request[]): SitemapBranchNode[] {
       id: `request:${request.id}`,
       kind: 'request',
       request,
+      requestIds: [request.id],
       occurrenceCount: 1,
       responseCount: request.response ? 1 : 0,
     })
   }
 
   function bubbleCounts(node: MutableBranchNode): { requestCount: number; responseCount: number } {
-    let requestCount = node.leaves.size
-    let responseCount = Array.from(node.leaves.values()).filter((leaf) => leaf.responseCount > 0).length
+    let requestCount = Array.from(node.leaves.values()).reduce((sum, leaf) => sum + leaf.occurrenceCount, 0)
+    let responseCount = Array.from(node.leaves.values()).reduce((sum, leaf) => sum + leaf.responseCount, 0)
 
     for (const child of node.branches.values()) {
       const counts = bubbleCounts(child)
@@ -159,18 +168,18 @@ export function getDefaultExpanded(tree: SitemapBranchNode[]): string[] {
 }
 
 export function collectRequestIdsUnder(nodes: SitemapNode[]): number[] {
-  const ids: number[] = []
+  const ids = new Set<number>()
 
   function visit(node: SitemapNode) {
     if (node.kind === 'request') {
-      ids.push(node.request.id)
+      for (const id of node.requestIds) ids.add(id)
     } else {
-      for (const child of node.children) visit(child)
+      for (const id of node.requestIds) ids.add(id)
     }
   }
 
   for (const node of nodes) visit(node)
-  return ids
+  return Array.from(ids)
 }
 
 export function collectBranchIds(nodes: SitemapBranchNode[]): Set<string> {

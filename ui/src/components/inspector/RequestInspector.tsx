@@ -382,6 +382,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
 function BodySection({ title, body }: { title: string; body: DecodedBody }) {
   const presentation = presentBody(body)
   const isEmpty = presentation.text.trim().length === 0
+  const graphQL = presentation.graphQL
 
   return (
     <div>
@@ -411,12 +412,53 @@ function BodySection({ title, body }: { title: string; body: DecodedBody }) {
       )}
       {presentation.formatted && (
         <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-primary/80">
-          prettified view
+          {graphQL ? 'graphql view' : 'prettified view'}
         </div>
       )}
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
           Empty body
+        </div>
+      ) : graphQL ? (
+        <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 font-semibold uppercase tracking-[0.16em] text-primary">
+              {graphQL.operationName || 'anonymous'}
+            </span>
+            <span>{graphQL.transport === 'json' ? 'JSON GraphQL request' : 'Raw GraphQL request'}</span>
+          </div>
+          <CodeViewer
+            value={graphQL.formattedQuery}
+            language="graphql"
+            maxHeight={560}
+            minHeight={180}
+          />
+          {graphQL.variablesText && (
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Variables
+              </div>
+              <CodeViewer
+                value={graphQL.variablesText}
+                language="json"
+                maxHeight={320}
+                minHeight={120}
+              />
+            </div>
+          )}
+          {graphQL.extensionsText && (
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Extensions
+              </div>
+              <CodeViewer
+                value={graphQL.extensionsText}
+                language="json"
+                maxHeight={320}
+                minHeight={120}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <CodeViewer

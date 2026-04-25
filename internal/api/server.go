@@ -34,6 +34,8 @@ type Server struct {
 		SetProject(*project.Manager, *project.AppConfig)
 		ChangePort(context.Context, int) error
 		Status() mcpsrv.Status
+		CallTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
+		ListTools(context.Context) (map[string]interface{}, error)
 	}
 
 	projectMu sync.RWMutex
@@ -89,6 +91,8 @@ func (s *Server) SetMCPServer(mcp interface {
 	SetProject(*project.Manager, *project.AppConfig)
 	ChangePort(context.Context, int) error
 	Status() mcpsrv.Status
+	CallTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
+	ListTools(context.Context) (map[string]interface{}, error)
 }) {
 	s.mcpServer = mcp
 }
@@ -160,6 +164,8 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/project", s.getProject)
 		r.Put("/project", s.updateProject)
 		r.Get("/mcp/status", s.getMCPStatus)
+		r.Get("/tools", s.listCodeTools)
+		r.Post("/tools/{name}", s.callCodeTool)
 		r.Post("/project/save-as", s.projectSaveAs)
 		r.Get("/project/recent", s.getRecentProjects)
 		r.Post("/project/open", s.openProject)

@@ -266,6 +266,35 @@ func (db *DB) DeleteRequest(id int64) error {
 	return db.DeleteRequests([]int64{id})
 }
 
+func (db *DB) RequestIDsByHost(host string) ([]int64, error) {
+	rows, err := db.Query(`SELECT id FROM requests WHERE host = ?`, host)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (db *DB) DeleteRequestsByHost(host string) ([]int64, error) {
+	ids, err := db.RequestIDsByHost(host)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.DeleteRequests(ids); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (db *DB) UpdateRequestTags(id int64, tags string) error {
 	_, err := db.Exec(`UPDATE requests SET tags = ? WHERE id = ?`, tags, id)
 	return err

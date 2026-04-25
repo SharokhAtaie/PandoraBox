@@ -1,10 +1,12 @@
 import type { DecodedBody } from '@/lib/httpBodies'
+import { detectGraphQLBody, type GraphQLPresentation } from '@/lib/graphql'
 
 export interface BodyPresentation {
   text: string
   language: string
   label: string
   formatted: boolean
+  graphQL?: GraphQLPresentation
 }
 
 const VOID_HTML_TAGS = new Set([
@@ -49,6 +51,27 @@ export function presentBody(body: DecodedBody): BodyPresentation {
     }
   }
 
+  if (isHtmlType(contentType) || looksLikeHtml(trimmed)) {
+    const formatted = formatHtml(trimmed)
+    return {
+      text: formatted ?? source,
+      language: 'html',
+      label: 'HTML',
+      formatted: Boolean(formatted && formatted !== source),
+    }
+  }
+
+  const graphQL = detectGraphQLBody(source, JSON.stringify({ 'content-type': [body.contentType] }))
+  if (graphQL) {
+    return {
+      text: graphQL.transport === 'json' ? graphQL.bodyText : graphQL.formattedQuery,
+      language: graphQL.transport === 'json' ? 'json' : 'graphql',
+      label: 'GraphQL',
+      formatted: graphQL.bodyChanged || graphQL.formattedQuery !== graphQL.query,
+      graphQL,
+    }
+  }
+
   if (isJsonType(contentType) || looksLikeJson(trimmed)) {
     const formatted = formatJson(trimmed)
     if (formatted) {
@@ -58,16 +81,6 @@ export function presentBody(body: DecodedBody): BodyPresentation {
         label: 'JSON',
         formatted: formatted !== source,
       }
-    }
-  }
-
-  if (isHtmlType(contentType) || looksLikeHtml(trimmed)) {
-    const formatted = formatHtml(trimmed)
-    return {
-      text: formatted ?? source,
-      language: 'html',
-      label: 'HTML',
-      formatted: Boolean(formatted && formatted !== source),
     }
   }
 

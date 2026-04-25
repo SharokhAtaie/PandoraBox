@@ -197,6 +197,71 @@ func (s *Server) Status() Status {
 	return st
 }
 
+func (s *Server) CallTool(ctx context.Context, name string, args map[string]interface{}) (map[string]interface{}, error) {
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "api-tool-call",
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      name,
+			"arguments": args,
+		},
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeToolResponse(s.mcp.HandleMessage(ctx, raw))
+}
+
+func (s *Server) ListTools(ctx context.Context) (map[string]interface{}, error) {
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "api-tools-list",
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeToolResponse(s.mcp.HandleMessage(ctx, raw))
+}
+
+func normalizeToolResponse(message interface{}) (map[string]interface{}, error) {
+	raw, err := json.Marshal(message)
+	if err != nil {
+		return nil, err
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	if rpcErr, ok := envelope["error"]; ok {
+		return nil, fmt.Errorf("%v", rpcErr)
+	}
+	result, _ := envelope["result"].(map[string]interface{})
+	if result == nil {
+		return map[string]interface{}{"mcp": envelope}, nil
+	}
+	contents, _ := result["content"].([]interface{})
+	if len(contents) == 1 {
+		if item, ok := contents[0].(map[string]interface{}); ok && item["type"] == "text" {
+			if text, ok := item["text"].(string); ok {
+				var parsed interface{}
+				if json.Unmarshal([]byte(text), &parsed) == nil {
+					return map[string]interface{}{"result": parsed, "mcp": result}, nil
+				}
+				return map[string]interface{}{"result": text, "mcp": result}, nil
+			}
+		}
+	}
+	return map[string]interface{}{"result": result, "mcp": result}, nil
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	s.cancelMu.Lock()
 	innerCtx, cancel := context.WithCancel(ctx)

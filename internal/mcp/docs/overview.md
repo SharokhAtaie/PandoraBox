@@ -7,15 +7,17 @@ Recommended discovery order:
 1. Call `list_docs`.
 2. Read `get_doc(topic="tools")`.
 3. Read `get_doc(topic="project-schemas")` before sending complex config.
-4. Read `get_doc(topic="middleware")` before writing middleware code.
-5. Read `get_doc(topic="flows")` before writing or running flows.
-6. If you need live debugging output, use `get_console_output`.
+4. Read `get_doc(topic="coding-api")` before calling PandoraBox from scripts or external tools.
+5. Read `get_doc(topic="middleware")` before writing middleware code.
+6. Read `get_doc(topic="flows")` before writing or running flows.
+7. If you need live debugging output, use `get_console_output`.
 
 The same documentation is also exposed as MCP resources:
 
 - `docs://pandorabox/overview`
 - `docs://pandorabox/tools`
 - `docs://pandorabox/project-schemas`
+- `docs://pandorabox/coding-api`
 - `docs://pandorabox/middleware`
 - `docs://pandorabox/flows`
 
