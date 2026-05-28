@@ -136,3 +136,4 @@ plans/
 
 # Local prompts (not tracked in git)
 prompts/
+.playwright-mcp/
