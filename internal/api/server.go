@@ -18,6 +18,21 @@ import (
 	"github.com/hamedsj5/pandorabox/internal/team"
 )
 
+// MCPServerFacade is the subset of mcp.Server that the REST API layer needs.
+// Kept here so both the struct field and SetMCPServer agree without drifting.
+type MCPServerFacade interface {
+	SetDB(*storage.DB)
+	SetProject(*project.Manager, *project.AppConfig)
+	ChangePort(context.Context, int) error
+	Status() mcpsrv.Status
+	CallTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
+	ListTools(context.Context) (map[string]interface{}, error)
+	// Collaborator surface — exposed so the REST API + UI can see sessions that
+	// were started by an MCP agent.
+	ListCollaboratorSessions() []mcpsrv.CollaboratorSessionInfo
+	GetCollaboratorSessionInteractions(sessionID string) ([]any, bool)
+}
+
 type Server struct {
 	cfg       *config.Config
 	ctx       context.Context
@@ -29,14 +44,7 @@ type Server struct {
 	ca        *ca.CA
 	hub       *Hub
 	uiFS      fs.FS
-	mcpServer interface {
-		SetDB(*storage.DB)
-		SetProject(*project.Manager, *project.AppConfig)
-		ChangePort(context.Context, int) error
-		Status() mcpsrv.Status
-		CallTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
-		ListTools(context.Context) (map[string]interface{}, error)
-	}
+	mcpServer MCPServerFacade
 
 	projectMu sync.RWMutex
 	project   *project.Manager
@@ -86,14 +94,7 @@ func (s *Server) SetTeamServer(srv *team.Server, cfg *team.ServerConfig) {
 	s.isServerMode = true
 }
 
-func (s *Server) SetMCPServer(mcp interface {
-	SetDB(*storage.DB)
-	SetProject(*project.Manager, *project.AppConfig)
-	ChangePort(context.Context, int) error
-	Status() mcpsrv.Status
-	CallTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
-	ListTools(context.Context) (map[string]interface{}, error)
-}) {
+func (s *Server) SetMCPServer(mcp MCPServerFacade) {
 	s.mcpServer = mcp
 }
 
@@ -153,6 +154,10 @@ func (s *Server) Handler() http.Handler {
 
 		// Body decoding (Brotli/zstd/gzip/deflate) for the web UI
 		r.Post("/decode", s.decodeBody)
+
+		// Collaborator: server-side (MCP-started) sessions visible to the UI.
+		r.Get("/collaborator/sessions", s.listCollaboratorSessions)
+		r.Get("/collaborator/sessions/{id}/interactions", s.getCollaboratorSessionInteractions)
 
 		// Converter
 		r.Get("/converter", s.getConverterConfig)

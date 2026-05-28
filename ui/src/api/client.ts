@@ -128,6 +128,18 @@ export interface MCPStatus {
   last_error?: string
 }
 
+// Server-side (MCP-started) Collaborator session, surfaced through
+// /api/collaborator/sessions and WebSocket events. The browser-managed
+// Collaborator sessions live in the local store and are not part of this shape.
+export interface ServerCollaboratorSession {
+  session_id: string
+  server: string
+  correlation_id: string
+  url: string
+  started_at: string
+  interaction_count: number
+}
+
 export interface InterceptFilter {
   host: string
   method: string
@@ -410,6 +422,13 @@ export const api = {
     update: (config: ConverterConfig) => put<{ config: ConverterConfig; algorithms: ConverterAlgorithm[] }>('/converter', { config }),
     transform: (body: { input: string; algorithm: string }) => post<{ output: string }>('/converter/transform', body),
     runStack: (body: { input: string; stack_id?: string; stack?: ConvertStack }) => post<{ output: string; stack: ConvertStack }>('/converter/stack/run', body),
+  },
+  // MCP-started Collaborator sessions. The browser-managed Collaborator stays
+  // entirely client-side; these endpoints expose what an agent started.
+  collaborator: {
+    listSessions: () => get<{ sessions: ServerCollaboratorSession[] }>('/collaborator/sessions'),
+    getInteractions: (id: string) =>
+      get<{ session_id: string; interactions: unknown[]; count: number }>(`/collaborator/sessions/${encodeURIComponent(id)}/interactions`),
   },
   team: {
     status: () => get<TeamStatus>('/team/status'),

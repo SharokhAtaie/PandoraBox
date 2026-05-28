@@ -15,19 +15,83 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hamedsj5/pandorabox/internal/events"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // collabSession holds the state for one active Collaborator (interactsh) session.
+// MCP-driven sessions are now visible to the UI: the server polls in the
+// background, accumulates interactions, and broadcasts events as they arrive.
 type collabSession struct {
+	ID            string
 	Server        string
 	CorrelationID string
 	SecretKey     string
 	PrivateKey    *rsa.PrivateKey
+	CurrentURL    string
+	StartedAt     time.Time
+
+	mu           sync.RWMutex
+	interactions []collabInteraction
+	seenIDs      map[string]bool // dedup by interactsh UniqueID
+
+	cancelPoll context.CancelFunc
+}
+
+// CollaboratorSessionInfo is the public projection used by the REST API + UI.
+type CollaboratorSessionInfo struct {
+	SessionID        string `json:"session_id"`
+	Server           string `json:"server"`
+	CorrelationID    string `json:"correlation_id"`
+	URL              string `json:"url"`
+	StartedAt        string `json:"started_at"`
+	InteractionCount int    `json:"interaction_count"`
+}
+
+// ListCollaboratorSessions returns a snapshot of every server-side session,
+// suitable for the UI's mount-time fetch. Hides crypto material.
+func (s *Server) ListCollaboratorSessions() []CollaboratorSessionInfo {
+	out := []CollaboratorSessionInfo{}
+	s.collaboratorSessions.Range(func(_, v any) bool {
+		sess := v.(*collabSession)
+		sess.mu.RLock()
+		out = append(out, CollaboratorSessionInfo{
+			SessionID:        sess.ID,
+			Server:           sess.Server,
+			CorrelationID:    sess.CorrelationID,
+			URL:              sess.CurrentURL,
+			StartedAt:        sess.StartedAt.UTC().Format(time.RFC3339Nano),
+			InteractionCount: len(sess.interactions),
+		})
+		sess.mu.RUnlock()
+		return true
+	})
+	return out
+}
+
+// GetCollaboratorSessionInteractions returns the accumulated interactions for a
+// session, or (nil, false) if the session id is unknown. The slice is a copy.
+// Returns []any so the public MCPServerFacade interface in internal/api stays
+// decoupled from the mcp package's private types.
+func (s *Server) GetCollaboratorSessionInteractions(sessionID string) ([]any, bool) {
+	v, ok := s.collaboratorSessions.Load(sessionID)
+	if !ok {
+		return nil, false
+	}
+	sess := v.(*collabSession)
+	sess.mu.RLock()
+	out := make([]any, len(sess.interactions))
+	for i, it := range sess.interactions {
+		out[i] = it
+	}
+	sess.mu.RUnlock()
+	return out, true
 }
 
 func (s *Server) registerCollaboratorTools() {
@@ -137,12 +201,34 @@ func (s *Server) toolCollaboratorStart(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	sess := &collabSession{
+		ID:            sessionID,
 		Server:        server,
 		CorrelationID: correlationID,
 		SecretKey:     secretKey,
 		PrivateKey:    privKey,
+		CurrentURL:    currentURL,
+		StartedAt:     time.Now(),
+		seenIDs:       map[string]bool{},
 	}
 	s.collaboratorSessions.Store(sessionID, sess)
+
+	// Start background polling so interactions stream to the UI without anyone
+	// having to call collaborator_poll.
+	s.startCollaboratorPolling(sess)
+
+	// Notify the UI a server-side session exists.
+	if s.bus != nil {
+		s.bus.Publish(events.Event{
+			Type: events.EventCollaboratorSessionStarted,
+			Data: map[string]any{
+				"session_id":     sessionID,
+				"url":            currentURL,
+				"server":         server,
+				"correlation_id": correlationID,
+				"started_at":     sess.StartedAt.UTC().Format(time.RFC3339Nano),
+			},
+		})
+	}
 
 	return map[string]any{
 		"session_id":     sessionID,
@@ -163,10 +249,12 @@ func (s *Server) toolCollaboratorPoll(ctx context.Context, req mcp.CallToolReque
 	}
 	sess := val.(*collabSession)
 
-	interactions, err := collabDoPoll(sess)
-	if err != nil {
-		return nil, err
-	}
+	// The background poller is the single owner of fetches against interactsh.
+	// Return the cached, deduplicated list so callers get the full picture and
+	// we don't race the poller (which would burn quota and double-decrypt).
+	sess.mu.RLock()
+	interactions := append([]collabInteraction(nil), sess.interactions...)
+	sess.mu.RUnlock()
 	return map[string]any{"interactions": interactions, "count": len(interactions)}, nil
 }
 
@@ -180,6 +268,11 @@ func (s *Server) toolCollaboratorStop(ctx context.Context, req mcp.CallToolReque
 		return map[string]any{"success": false, "reason": "session_not_found"}, nil
 	}
 	sess := val.(*collabSession)
+
+	// Stop the background poller before deregistering.
+	if sess.cancelPoll != nil {
+		sess.cancelPoll()
+	}
 
 	// Deregister (best-effort)
 	bodyMap := map[string]string{
@@ -199,7 +292,89 @@ func (s *Server) toolCollaboratorStop(ctx context.Context, req mcp.CallToolReque
 		deregResp.Body.Close()
 	}
 
+	if s.bus != nil {
+		s.bus.Publish(events.Event{
+			Type: events.EventCollaboratorSessionStopped,
+			Data: map[string]any{"session_id": sessionID},
+		})
+	}
+
 	return map[string]any{"success": true}, nil
+}
+
+// startCollaboratorPolling kicks off a goroutine that polls the interactsh
+// server every 5s (and once immediately). New interactions are deduped, kept
+// on the session, and broadcast over the event bus so the UI updates live.
+func (s *Server) startCollaboratorPolling(sess *collabSession) {
+	bg := s.bgCtx
+	if bg == nil {
+		bg = context.Background()
+	}
+	ctx, cancel := context.WithCancel(bg)
+	sess.cancelPoll = cancel
+
+	doPoll := func() {
+		interactions, err := collabDoPoll(sess)
+		if err != nil {
+			slog.Debug("collaborator poll failed", "session", sess.ID, "err", err)
+			return
+		}
+		if len(interactions) == 0 {
+			return
+		}
+		fresh := make([]collabInteraction, 0, len(interactions))
+		sess.mu.Lock()
+		for _, it := range interactions {
+			key := it.UniqueID
+			if key == "" {
+				key = it.FullID + "|" + it.Timestamp
+			}
+			if sess.seenIDs[key] {
+				continue
+			}
+			sess.seenIDs[key] = true
+			sess.interactions = append(sess.interactions, it)
+			fresh = append(fresh, it)
+		}
+		// Cap memory: keep the most recent 1000 interactions.
+		if len(sess.interactions) > 1000 {
+			sess.interactions = sess.interactions[len(sess.interactions)-1000:]
+		}
+		sess.mu.Unlock()
+
+		if s.bus != nil {
+			for _, it := range fresh {
+				s.bus.Publish(events.Event{
+					Type: events.EventCollaboratorInteraction,
+					Data: map[string]any{
+						"session_id":  sess.ID,
+						"interaction": it,
+					},
+				})
+			}
+		}
+	}
+
+	go func() {
+		// First poll happens after a short delay so initial DNS records have
+		// time to register at the interactsh server.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(1 * time.Second):
+		}
+		doPoll()
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				doPoll()
+			}
+		}
+	}()
 }
 
 func (s *Server) toolCollaboratorGenerateURL(ctx context.Context, req mcp.CallToolRequest) (any, error) {

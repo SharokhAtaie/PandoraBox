@@ -32,6 +32,13 @@ const (
 	EventIntruderJobCompleted EventType = "intruder.job.completed"
 	EventIntruderJobCancelled EventType = "intruder.job.cancelled"
 
+	// Collaborator events — surface server-side (MCP-started) sessions to the
+	// UI. The browser-side Collaborator page subscribes to these so an agent
+	// calling collaborator_start, polling, etc. shows up in real time.
+	EventCollaboratorSessionStarted EventType = "collaborator.session.started"
+	EventCollaboratorSessionStopped EventType = "collaborator.session.stopped"
+	EventCollaboratorInteraction    EventType = "collaborator.interaction"
+
 	// Team collaboration events — published onto the local bus so the WS hub
 	// forwards them to connected browser clients.
 	EventTeamMemberJoined  EventType = "team.member.joined"

@@ -6,8 +6,10 @@ import { useConsoleStore } from '@/store/console'
 import { useTeamStore } from '@/store/team'
 import { useOrganizerStore } from '@/store/organizer'
 import { useIntruderStore } from '@/store/intruder'
+import { useCollaboratorStore } from '@/store/collaborator'
 import { api } from '@/api/client'
-import type { Request, Replay, Response, ProxyStatus, WebSocketFrame, TeamMember, OrganizerFolder, OrganizerItem } from '@/api/client'
+import type { Request, Replay, Response, ProxyStatus, WebSocketFrame, TeamMember, OrganizerFolder, OrganizerItem, ServerCollaboratorSession } from '@/api/client'
+import type { Interaction } from '@/lib/interactsh'
 
 interface WSEvent {
   type: string
@@ -42,6 +44,11 @@ export function useWebSocket() {
 
     ws.onopen = () => {
       console.log('[WS] Connected')
+      // Pull server-side Collaborator sessions in case any were already running
+      // (started by an MCP agent before this browser session opened).
+      api.collaborator.listSessions()
+        .then((r) => useCollaboratorStore.getState().setServerSessions(r.sessions ?? []))
+        .catch(console.error)
     }
 
     ws.onmessage = (e) => {
@@ -206,6 +213,18 @@ export function useWebSocket() {
           total: data.total ?? 0,
           status: (data.status as 'done' | 'cancelled') ?? 'done',
         })
+      }
+
+    // ── Collaborator events: server-side (MCP-started) sessions ─────────────
+    } else if (evt.type === 'collaborator.session.started') {
+      useCollaboratorStore.getState().upsertServerSession(evt.data as ServerCollaboratorSession)
+    } else if (evt.type === 'collaborator.session.stopped') {
+      const data = evt.data as { session_id?: string }
+      if (data?.session_id) useCollaboratorStore.getState().removeServerSession(data.session_id)
+    } else if (evt.type === 'collaborator.interaction') {
+      const data = evt.data as { session_id?: string; interaction?: Interaction }
+      if (data?.session_id && data.interaction) {
+        useCollaboratorStore.getState().appendServerInteraction(data.session_id, data.interaction)
       }
     }
   }

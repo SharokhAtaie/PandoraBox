@@ -365,8 +365,9 @@ function ServerSelector({ value, onChange, disabled }: {
 export function CollaboratorPage() {
   const {
     currentUrl, server, status, error,
-    interactions, lastPollAt,
+    interactions: localInteractions, lastPollAt,
     start, stop, clear, setServer, regenerateUrl,
+    serverSessions,
   } = useCollaboratorStore()
 
   const [selected, setSelected] = useState<Interaction | null>(null)
@@ -382,6 +383,19 @@ export function CollaboratorPage() {
     const t = setInterval(() => setTicker(n => n + 1), 15_000)
     return () => clearInterval(t)
   }, [])
+
+  // Combine browser-managed interactions with every server-side
+  // (MCP-started) session so the unified list shows everything the
+  // Collaborator surface has seen. Server interactions are tagged so the
+  // detail view can label them.
+  const interactions = useMemo<Interaction[]>(() => {
+    const flat: Interaction[] = [...localInteractions]
+    for (const sess of serverSessions) {
+      for (const it of sess.interactions) flat.push(it)
+    }
+    flat.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    return flat
+  }, [localInteractions, serverSessions])
 
   const filtered = useMemo(() => applyFilters(interactions, filters), [interactions, filters])
   const activeFilterCount = countActiveFilters(filters)
@@ -541,10 +555,45 @@ export function CollaboratorPage() {
             </button>
           </div>
         )}
+
+        {/* Server-side (MCP-started) sessions — render one chip per session so
+            the URL is one click away and interactions count is visible live. */}
+        {serverSessions.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Agent-started sessions ({serverSessions.length})
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {serverSessions.map((sess) => (
+                <div
+                  key={sess.session_id}
+                  className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.06] px-2 py-1"
+                >
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                    MCP
+                  </span>
+                  <span className="font-mono text-xs text-foreground" title={sess.url}>
+                    {sess.url}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {sess.interaction_count} {sess.interaction_count === 1 ? 'hit' : 'hits'}
+                  </span>
+                  <button
+                    onClick={() => copy(sess.url, `mcp-${sess.session_id}`)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Copy URL"
+                  >
+                    {copied === `mcp-${sess.session_id}` ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
-      {status === 'idle' && !currentUrl && interactions.length === 0 ? (
+      {status === 'idle' && !currentUrl && interactions.length === 0 && serverSessions.length === 0 ? (
         <IdleEmptyState onStart={() => start()} />
       ) : (
         <div className="flex flex-1 min-h-0 overflow-hidden">

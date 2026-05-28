@@ -4,9 +4,19 @@ import {
   PUBLIC_SERVERS,
 } from '@/lib/interactsh'
 import type { Interaction, InteractshSession } from '@/lib/interactsh'
+import type { ServerCollaboratorSession } from '@/api/client'
 
 export type { Interaction }
 export { PUBLIC_SERVERS }
+
+/**
+ * ServerSession is a server-side Collaborator session (started by an MCP agent
+ * or other PandoraBox instance). Its interactions arrive via WebSocket events
+ * — the browser does not own the crypto material and does not poll directly.
+ */
+export interface ServerSession extends ServerCollaboratorSession {
+  interactions: Interaction[]
+}
 
 // ─── Module-level state (holds non-serializable crypto objects) ───────────────
 let _session: InteractshSession | null = null
@@ -32,6 +42,13 @@ interface CollaboratorStore {
   clear: () => void
   setServer: (s: string) => void
   regenerateUrl: () => void     // generate a fresh nonce URL (same session)
+
+  // Server-side (MCP-started) sessions — synced via REST + WebSocket events.
+  serverSessions: ServerSession[]
+  setServerSessions: (sessions: ServerCollaboratorSession[]) => void
+  upsertServerSession: (session: ServerCollaboratorSession) => void
+  removeServerSession: (sessionId: string) => void
+  appendServerInteraction: (sessionId: string, interaction: Interaction) => void
 }
 
 const POLL_INTERVAL_MS = 5_000
@@ -102,6 +119,40 @@ export const useCollaboratorStore = create<CollaboratorStore>((set, get) => ({
   },
 
   clear: () => set({ interactions: [] }),
+
+  // ── Server-side sessions ────────────────────────────────────────────────
+  serverSessions: [],
+  setServerSessions: (sessions) => set({
+    serverSessions: sessions.map((s) => {
+      const existing = get().serverSessions.find((p) => p.session_id === s.session_id)
+      return { ...s, interactions: existing?.interactions ?? [] }
+    }),
+  }),
+  upsertServerSession: (session) => set((s) => {
+    const idx = s.serverSessions.findIndex((p) => p.session_id === session.session_id)
+    if (idx >= 0) {
+      const next = [...s.serverSessions]
+      next[idx] = { ...next[idx], ...session }
+      return { serverSessions: next }
+    }
+    return { serverSessions: [{ ...session, interactions: [] }, ...s.serverSessions] }
+  }),
+  removeServerSession: (sessionId) => set((s) => ({
+    serverSessions: s.serverSessions.filter((p) => p.session_id !== sessionId),
+  })),
+  appendServerInteraction: (sessionId, interaction) => set((s) => {
+    const idx = s.serverSessions.findIndex((p) => p.session_id === sessionId)
+    if (idx < 0) return s
+    const next = [...s.serverSessions]
+    const sess = next[idx]
+    next[idx] = {
+      ...sess,
+      interactions: [interaction, ...sess.interactions].slice(0, 1000),
+      interaction_count: sess.interaction_count + 1,
+    }
+    // Attention tick so the page can flash the bell, like the browser path does.
+    return { serverSessions: next, collaboratorAttentionTick: s.collaboratorAttentionTick + 1 }
+  }),
 }))
 
 export const POLL_INTERVAL = POLL_INTERVAL_MS
