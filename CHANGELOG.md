@@ -29,6 +29,9 @@ First public release.
   the SiteMap, or request counts; existing projects are migrated and cleaned on
   first launch. Match-and-replace and middleware now apply to every replay, and
   concurrent replays no longer wedge the server.
+- Replay responses now survive leaving and returning to the Replay page, and the
+  back/forward arrows restore each sent packet together with the response it
+  produced.
 - The selection-to-Converter popup now tracks a changed selection and dismisses
   on deselect instead of leaving a stale popup, while staying open when you click
   into it.
