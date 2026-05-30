@@ -3,6 +3,14 @@ import { persist } from 'zustand/middleware'
 import type { Replay, Request } from '@/api/client'
 import { getRawRequestText } from '@/lib/rawHttp'
 
+// One slot in a queue entry's packet history: the raw packet that was sent and
+// the response it produced (a full Replay, which carries either a response or a
+// server-side error). `result` is null for the initial, never-sent packet.
+export interface ReplayHistoryEntry {
+  packet: string
+  result: Replay | null
+}
+
 // One entry in the Replay/Repeater queue. Self-contained: it carries the source
 // request snapshot (for the label and "in replay?" checks), the current
 // editable raw packet, the chosen transport scheme, and the per-entry packet
@@ -12,7 +20,7 @@ export interface ReplayQueueItem {
   request: Request
   packet: string
   scheme: string // "http" | "https"
-  history: { entries: string[]; index: number }
+  history: { entries: ReplayHistoryEntry[]; index: number }
 }
 
 const MAX_QUEUE = 100
@@ -29,8 +37,24 @@ function newItem(queueId: number, req: Request): ReplayQueueItem {
     request: req,
     packet,
     scheme: schemeOf(req),
-    history: { entries: [packet], index: 0 },
+    history: { entries: [{ packet, result: null }], index: 0 },
   }
+}
+
+// Response bodies are large, so they are never written to localStorage. Strip
+// every stored result before persisting; they live only in the in-memory state.
+function stripResults(byProject: Record<string, ReplayQueueItem[]>): Record<string, ReplayQueueItem[]> {
+  const out: Record<string, ReplayQueueItem[]> = {}
+  for (const [path, items] of Object.entries(byProject)) {
+    out[path] = items.map((it) => ({
+      ...it,
+      history: {
+        index: it.history.index,
+        entries: it.history.entries.map((e) => ({ packet: e.packet, result: null })),
+      },
+    }))
+  }
+  return out
 }
 
 interface ReplayQueueState {
@@ -42,10 +66,9 @@ interface ReplayQueueState {
   nextId: number
   attentionTick: number
 
-  // Last send result/error per queue entry. Kept in memory (NOT persisted —
-  // response bodies can be large) so the response survives navigating away from
-  // the Replay page and back. A full reload re-sends.
-  results: Record<number, Replay>
+  // Transient per-entry send error for client-side failures (thrown fetch,
+  // cancellation) where no Replay object exists. Server-side errors live on the
+  // history entry's Replay instead. In memory only.
   errors: Record<number, string>
   // Currently open queue entry. In memory (NOT persisted) so leaving the Replay
   // page and returning re-opens the same request — together with its response.
@@ -59,13 +82,12 @@ interface ReplayQueueState {
   duplicateReplayItem: (queueId: number) => void
   clearReplay: () => void
 
-  setResult: (queueId: number, replay: Replay) => void
   setError: (queueId: number, message: string) => void
   clearError: (queueId: number) => void
 
   updatePacket: (queueId: number, packet: string) => void
   setScheme: (queueId: number, scheme: string) => void
-  pushHistory: (queueId: number, packet: string) => void
+  recordSend: (queueId: number, packet: string, result: Replay) => void
   setHistoryIndex: (queueId: number, index: number) => void
 }
 
@@ -84,17 +106,16 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
       const mapItems = (fn: (it: ReplayQueueItem) => ReplayQueueItem) =>
         commit(get().replayQueue.map(fn))
 
-      // Drop the in-memory result/error for one entry (or all when no id).
-      const dropResults = (queueId?: number) => {
-        const { results, errors } = get()
+      // Drop the transient error for one entry (or all when no id).
+      const dropError = (queueId?: number) => {
+        const { errors } = get()
         if (queueId == null) {
-          if (Object.keys(results).length || Object.keys(errors).length) set({ results: {}, errors: {} })
+          if (Object.keys(errors).length) set({ errors: {} })
           return
         }
-        if (queueId in results || queueId in errors) {
-          const r = { ...results }; delete r[queueId]
+        if (queueId in errors) {
           const e = { ...errors }; delete e[queueId]
-          set({ results: r, errors: e })
+          set({ errors: e })
         }
       }
 
@@ -104,20 +125,18 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
         activeProject: '',
         nextId: 1,
         attentionTick: 0,
-        results: {},
         errors: {},
         selectedQueueId: null,
 
         setActiveProject: (path) => {
           const { activeProject, byProject } = get()
           if (path === activeProject) return
-          // Switching projects swaps the queue, so the open entry no longer
-          // applies — reset selection and any in-memory results.
+          // Switching projects swaps the queue, so the open entry and any live
+          // errors no longer apply.
           set({
             activeProject: path,
             replayQueue: byProject[path] ?? [],
             selectedQueueId: null,
-            results: {},
             errors: {},
           })
         },
@@ -142,14 +161,14 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
 
         removeFromReplay: (queueId) => {
           commit(get().replayQueue.filter((e) => e.queueId !== queueId))
-          dropResults(queueId)
+          dropError(queueId)
           if (get().selectedQueueId === queueId) set({ selectedQueueId: null })
         },
 
         removeRequestFromReplay: (requestId) => {
           const removed = get().replayQueue.filter((e) => e.request.id === requestId)
           commit(get().replayQueue.filter((e) => e.request.id !== requestId))
-          removed.forEach((e) => dropResults(e.queueId))
+          removed.forEach((e) => dropError(e.queueId))
           if (removed.some((e) => e.queueId === get().selectedQueueId)) set({ selectedQueueId: null })
         },
 
@@ -173,15 +192,9 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
 
         clearReplay: () => {
           commit([])
-          dropResults()
+          dropError()
           set({ selectedQueueId: null })
         },
-
-        setResult: (queueId, replay) =>
-          set((state) => ({
-            results: { ...state.results, [queueId]: replay },
-            errors: (() => { const e = { ...state.errors }; delete e[queueId]; return e })(),
-          })),
 
         setError: (queueId, message) =>
           set((state) => ({ errors: { ...state.errors, [queueId]: message } })),
@@ -195,30 +208,66 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
         setScheme: (queueId, scheme) =>
           mapItems((it) => (it.queueId === queueId ? { ...it, scheme } : it)),
 
-        // Record a successfully-sent packet in the per-entry history (forward
-        // entries past the current index are discarded, like an undo stack).
-        pushHistory: (queueId, packet) =>
+        // Record a sent packet and its response in the per-entry history. The
+        // response travels with the packet, so the back/forward arrows restore
+        // both. Forward entries past the current index are discarded (undo
+        // stack); re-sending the current packet refreshes its response in place.
+        recordSend: (queueId, packet, result) =>
           mapItems((it) => {
             if (it.queueId !== queueId) return it
             const visible = it.history.entries.slice(0, it.history.index + 1)
             const last = visible[visible.length - 1]
-            const entries = (last === packet ? visible : [...visible, packet]).slice(-MAX_HISTORY)
+            const entries = (
+              last && last.packet === packet
+                ? [...visible.slice(0, -1), { packet, result }]
+                : [...visible, { packet, result }]
+            ).slice(-MAX_HISTORY)
             return { ...it, packet, history: { entries, index: entries.length - 1 } }
           }),
 
-        setHistoryIndex: (queueId, index) =>
-          mapItems((it) => {
-            if (it.queueId !== queueId) return it
-            if (index < 0 || index >= it.history.entries.length) return it
-            return { ...it, packet: it.history.entries[index], history: { ...it.history, index } }
-          }),
+        setHistoryIndex: (queueId, index) => {
+          const it = get().replayQueue.find((e) => e.queueId === queueId)
+          if (!it || index < 0 || index >= it.history.entries.length) return
+          mapItems((entry) =>
+            entry.queueId === queueId
+              ? { ...entry, packet: entry.history.entries[index].packet, history: { ...entry.history, index } }
+              : entry,
+          )
+          // The viewed entry carries its own response/error, so clear any live
+          // client-side error from the latest attempt.
+          dropError(queueId)
+        },
       }
     },
     {
       name: 'pandora-replay-queue',
-      // Only the per-project map + id counter are persisted. The active array is
-      // re-derived via setActiveProject after rehydration.
-      partialize: (s) => ({ byProject: s.byProject, nextId: s.nextId }),
+      version: 1,
+      // Only the per-project map + id counter are persisted (with response
+      // bodies stripped). The active array is re-derived via setActiveProject
+      // after rehydration.
+      partialize: (s) => ({ byProject: stripResults(s.byProject), nextId: s.nextId }),
+      // v0 stored history.entries as a bare string[]; v1 stores
+      // { packet, result } objects. Convert old entries on load.
+      migrate: (persisted) => {
+        const p = persisted as { byProject?: Record<string, unknown[]>; nextId?: number } | undefined
+        if (p?.byProject) {
+          for (const path of Object.keys(p.byProject)) {
+            p.byProject[path] = (p.byProject[path] as Record<string, unknown>[]).map((it) => {
+              const history = (it.history ?? {}) as { entries?: unknown[]; index?: number }
+              return {
+                ...it,
+                history: {
+                  index: history.index ?? 0,
+                  entries: (history.entries ?? []).map((e) =>
+                    typeof e === 'string' ? { packet: e, result: null } : { ...(e as object), result: null },
+                  ),
+                },
+              }
+            })
+          }
+        }
+        return p as unknown
+      },
     },
   ),
 )

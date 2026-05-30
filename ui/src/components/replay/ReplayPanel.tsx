@@ -27,13 +27,11 @@ export function ReplayPanel() {
   const clearReplay = useReplayQueueStore((s) => s.clearReplay)
   const updatePacket = useReplayQueueStore((s) => s.updatePacket)
   const setScheme = useReplayQueueStore((s) => s.setScheme)
-  const pushHistory = useReplayQueueStore((s) => s.pushHistory)
+  const recordSend = useReplayQueueStore((s) => s.recordSend)
   const setHistoryIndex = useReplayQueueStore((s) => s.setHistoryIndex)
-  // Results live in the store (in-memory) so the response survives leaving the
-  // Replay page and coming back.
-  const results = useReplayQueueStore((s) => s.results)
+  // Responses live on each history entry (in memory) so they survive leaving the
+  // Replay page and the back/forward arrows restore the matching response.
   const errors = useReplayQueueStore((s) => s.errors)
-  const setResult = useReplayQueueStore((s) => s.setResult)
   const setError = useReplayQueueStore((s) => s.setError)
   const clearError = useReplayQueueStore((s) => s.clearError)
   // Selection lives in the store (in-memory) so returning to this page re-opens
@@ -57,8 +55,13 @@ export function ReplayPanel() {
   const rawRequest = selectedEntry?.packet ?? ''
   const scheme = selectedEntry?.scheme ?? 'http'
   const history = selectedEntry?.history
-  const replay = selectedQueueId != null ? results[selectedQueueId] ?? null : null
-  const sendError = selectedQueueId != null ? errors[selectedQueueId] ?? '' : ''
+  // The response for the packet currently in view comes from its history entry,
+  // so navigating the back/forward arrows shows the matching response.
+  const replay = history ? history.entries[history.index]?.result ?? null : null
+  // A server-side failure is carried on the Replay itself; a client-side failure
+  // (thrown fetch, cancellation) lives in the transient errors map.
+  const liveError = selectedQueueId != null ? errors[selectedQueueId] ?? '' : ''
+  const sendError = (replay?.status === 'error' ? replay.error || 'Replay failed' : '') || liveError
 
   const replayPresentation = decodedReplayBody ? presentBody(decodedReplayBody) : null
   const replayPacketText = useMemo(() => {
@@ -97,12 +100,9 @@ export function ReplayPanel() {
         { request_id: selectedEntry.request.id, raw: encodeRawRequest(packet), scheme: selectedEntry.scheme },
         controller.signal,
       )
-      setResult(id, result)
-      if (result.status === 'error') {
-        setError(id, result.error || 'Replay failed')
-      } else {
-        pushHistory(id, packet)
-      }
+      // Records the packet + its response (done or server-side error) as the
+      // current history entry, so the arrows can return to it later.
+      recordSend(id, packet, result)
     } catch (error) {
       if (controller.signal.aborted) {
         setError(id, 'Replay cancelled')
