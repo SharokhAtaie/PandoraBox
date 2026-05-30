@@ -29,14 +29,21 @@ export function ReplayPanel() {
   const setScheme = useReplayQueueStore((s) => s.setScheme)
   const pushHistory = useReplayQueueStore((s) => s.pushHistory)
   const setHistoryIndex = useReplayQueueStore((s) => s.setHistoryIndex)
+  // Results live in the store (in-memory) so the response survives leaving the
+  // Replay page and coming back.
+  const results = useReplayQueueStore((s) => s.results)
+  const errors = useReplayQueueStore((s) => s.errors)
+  const setResult = useReplayQueueStore((s) => s.setResult)
+  const setError = useReplayQueueStore((s) => s.setError)
+  const clearError = useReplayQueueStore((s) => s.clearError)
+  // Selection lives in the store (in-memory) so returning to this page re-opens
+  // the same request alongside its response.
+  const selectedQueueId = useReplayQueueStore((s) => s.selectedQueueId)
+  const setSelectedQueueId = useReplayQueueStore((s) => s.setSelectedQueueId)
   const autoContentLength = useReplayStore((state) => state.autoContentLength)
   const sendToConverter = useConverterStore((state) => state.sendToConverter)
   const { open: contextMenuOpen, openMenu, close: closeContextMenu, menuRef } = useContextMenu()
 
-  const [selectedQueueId, setSelectedQueueId] = useState<number | null>(null)
-  // Runtime-only per-entry results — not persisted (the queue/packets are).
-  const [results, setResults] = useState<Record<number, Replay>>({})
-  const [errors, setErrors] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
   const [menuSelection, setMenuSelection] = useState('')
   const [decodedReplayBody, setDecodedReplayBody] = useState<DecodedBody | null>(null)
@@ -83,25 +90,25 @@ export function ReplayPanel() {
     const controller = new AbortController()
     abortRef.current = controller
     setLoading(true)
-    setErrors((e) => { const n = { ...e }; delete n[id]; return n })
+    clearError(id)
 
     try {
       const result = await api.replay.create(
         { request_id: selectedEntry.request.id, raw: encodeRawRequest(packet), scheme: selectedEntry.scheme },
         controller.signal,
       )
-      setResults((r) => ({ ...r, [id]: result }))
+      setResult(id, result)
       if (result.status === 'error') {
-        setErrors((e) => ({ ...e, [id]: result.error || 'Replay failed' }))
+        setError(id, result.error || 'Replay failed')
       } else {
         pushHistory(id, packet)
       }
     } catch (error) {
       if (controller.signal.aborted) {
-        setErrors((e) => ({ ...e, [id]: 'Replay cancelled' }))
+        setError(id, 'Replay cancelled')
       } else {
         console.error(error)
-        setErrors((e) => ({ ...e, [id]: error instanceof Error ? error.message : 'Failed to replay request' }))
+        setError(id, error instanceof Error ? error.message : 'Failed to replay request')
       }
     } finally {
       setLoading(false)
@@ -114,9 +121,8 @@ export function ReplayPanel() {
   }
 
   function handleRemoveEntry(queueId: number) {
+    // removeFromReplay also drops this entry's stored result/error.
     removeFromReplay(queueId)
-    setResults((r) => { const n = { ...r }; delete n[queueId]; return n })
-    setErrors((e) => { const n = { ...e }; delete n[queueId]; return n })
     if (selectedQueueId === queueId) {
       setSelectedQueueId(null)
       setDecodedReplayBody(null)

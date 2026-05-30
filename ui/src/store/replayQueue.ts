@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Request } from '@/api/client'
+import type { Replay, Request } from '@/api/client'
 import { getRawRequestText } from '@/lib/rawHttp'
 
 // One entry in the Replay/Repeater queue. Self-contained: it carries the source
@@ -42,12 +42,26 @@ interface ReplayQueueState {
   nextId: number
   attentionTick: number
 
+  // Last send result/error per queue entry. Kept in memory (NOT persisted —
+  // response bodies can be large) so the response survives navigating away from
+  // the Replay page and back. A full reload re-sends.
+  results: Record<number, Replay>
+  errors: Record<number, string>
+  // Currently open queue entry. In memory (NOT persisted) so leaving the Replay
+  // page and returning re-opens the same request — together with its response.
+  selectedQueueId: number | null
+
   setActiveProject: (path: string) => void
+  setSelectedQueueId: (queueId: number | null) => void
   addToReplay: (req: Request) => void
   removeFromReplay: (queueId: number) => void
   removeRequestFromReplay: (requestId: number) => void
   duplicateReplayItem: (queueId: number) => void
   clearReplay: () => void
+
+  setResult: (queueId: number, replay: Replay) => void
+  setError: (queueId: number, message: string) => void
+  clearError: (queueId: number) => void
 
   updatePacket: (queueId: number, packet: string) => void
   setScheme: (queueId: number, scheme: string) => void
@@ -70,21 +84,45 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
       const mapItems = (fn: (it: ReplayQueueItem) => ReplayQueueItem) =>
         commit(get().replayQueue.map(fn))
 
+      // Drop the in-memory result/error for one entry (or all when no id).
+      const dropResults = (queueId?: number) => {
+        const { results, errors } = get()
+        if (queueId == null) {
+          if (Object.keys(results).length || Object.keys(errors).length) set({ results: {}, errors: {} })
+          return
+        }
+        if (queueId in results || queueId in errors) {
+          const r = { ...results }; delete r[queueId]
+          const e = { ...errors }; delete e[queueId]
+          set({ results: r, errors: e })
+        }
+      }
+
       return {
         replayQueue: [],
         byProject: {},
         activeProject: '',
         nextId: 1,
         attentionTick: 0,
+        results: {},
+        errors: {},
+        selectedQueueId: null,
 
         setActiveProject: (path) => {
           const { activeProject, byProject } = get()
           if (path === activeProject) return
+          // Switching projects swaps the queue, so the open entry no longer
+          // applies — reset selection and any in-memory results.
           set({
             activeProject: path,
             replayQueue: byProject[path] ?? [],
+            selectedQueueId: null,
+            results: {},
+            errors: {},
           })
         },
+
+        setSelectedQueueId: (queueId) => set({ selectedQueueId: queueId }),
 
         addToReplay: (req) =>
           set((state) => {
@@ -102,11 +140,18 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
             }
           }),
 
-        removeFromReplay: (queueId) =>
-          commit(get().replayQueue.filter((e) => e.queueId !== queueId)),
+        removeFromReplay: (queueId) => {
+          commit(get().replayQueue.filter((e) => e.queueId !== queueId))
+          dropResults(queueId)
+          if (get().selectedQueueId === queueId) set({ selectedQueueId: null })
+        },
 
-        removeRequestFromReplay: (requestId) =>
-          commit(get().replayQueue.filter((e) => e.request.id !== requestId)),
+        removeRequestFromReplay: (requestId) => {
+          const removed = get().replayQueue.filter((e) => e.request.id === requestId)
+          commit(get().replayQueue.filter((e) => e.request.id !== requestId))
+          removed.forEach((e) => dropResults(e.queueId))
+          if (removed.some((e) => e.queueId === get().selectedQueueId)) set({ selectedQueueId: null })
+        },
 
         duplicateReplayItem: (queueId) =>
           set((state) => {
@@ -126,7 +171,23 @@ export const useReplayQueueStore = create<ReplayQueueState>()(
             }
           }),
 
-        clearReplay: () => commit([]),
+        clearReplay: () => {
+          commit([])
+          dropResults()
+          set({ selectedQueueId: null })
+        },
+
+        setResult: (queueId, replay) =>
+          set((state) => ({
+            results: { ...state.results, [queueId]: replay },
+            errors: (() => { const e = { ...state.errors }; delete e[queueId]; return e })(),
+          })),
+
+        setError: (queueId, message) =>
+          set((state) => ({ errors: { ...state.errors, [queueId]: message } })),
+
+        clearError: (queueId) =>
+          set((state) => { const e = { ...state.errors }; delete e[queueId]; return { errors: e } }),
 
         updatePacket: (queueId, packet) =>
           mapItems((it) => (it.queueId === queueId ? { ...it, packet } : it)),
