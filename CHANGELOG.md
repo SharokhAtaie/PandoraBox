@@ -5,7 +5,7 @@ All notable changes to PandoraBox will be documented in this file.
 The format is based on Keep a Changelog, and this project follows semantic
 versioning for public releases.
 
-## [1.0.0] - 2026-05-30
+## [1.0.0] - 2026-06-01
 
 First public release.
 
@@ -22,6 +22,8 @@ First public release.
 - Local SQLite project storage with importable project configuration files.
 - Replay queue persists per project across reloads, with an HTTP/HTTPS scheme
   switch, a Cancel button for in-flight sends, and an editable raw-packet history.
+- The launcher's recent-projects list has a per-entry remove control that drops a
+  project from the list without deleting its files.
 
 ### Fixed
 
@@ -35,3 +37,5 @@ First public release.
 - The selection-to-Converter popup now tracks a changed selection and dismisses
   on deselect instead of leaving a stale popup, while staying open when you click
   into it.
+- Closing the launcher before opening a project now quits the app instead of
+  leaving it running with no visible window.
