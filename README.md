@@ -1,399 +1,128 @@
+<div align="center">
+
+<img src="PandoraBox-Logo.png" alt="PandoraBox" width="104">
+
 # PandoraBox
 
-A programmable MITM proxy — intercept, inspect, replay, and script HTTP/HTTPS traffic — with a built-in MCP server for Claude Desktop integration.
+**A programmable MITM proxy — intercept, inspect, replay, and script HTTP/HTTPS traffic — with a built-in MCP server so an AI agent can drive it.**
 
-![History and request inspector](docs/screenshots/history.png)
+[**Download**](https://github.com/hamedsj/PandoraBox/releases/latest) · [Quick start](#quick-start) · [MCP](#mcp--let-an-ai-drive-the-proxy) · [Docs](wiki/features.md)
 
-> Capture and read traffic in a live history with method / status / size / timing columns, full-text search, and a Pretty / Raw / Hex inspector with syntax highlighting and decoded bodies.
+![license](https://img.shields.io/badge/license-Apache--2.0-blue)
+![release](https://img.shields.io/github/v/release/hamedsj/PandoraBox)
+![platforms](https://img.shields.io/badge/macOS%20·%20Windows%20·%20Linux-lightgrey)
 
-![Replay editor and response](docs/screenshots/replay.png)
+</div>
 
-> **Replay** — queue any request, edit the full raw HTTP packet directly, and resend it. Responses come back syntax-highlighted with status, timing, and content type.
-
-![Collaborator out-of-band interactions](docs/screenshots/collaborator.png)
-
-> **Collaborator** — generate a unique host backed by an interactsh server and detect blind DNS, HTTP, and SMTP callbacks from SSRF, XXE, and RCE, with the full raw request/response for every interaction.
-
----
-
-## Table of Contents
-
-1. [Prerequisites](#prerequisites)
-2. [Installation](#installation)
-3. [CA Certificate Setup](#ca-certificate-setup)
-4. [Proxy Configuration](#proxy-configuration)
-5. [Running PandoraBox](#running-pandorabox)
-6. [UI Overview](#ui-overview)
-7. [MCP Server — Claude Desktop Integration](#mcp-server--claude-desktop-integration)
-8. [Projects](#projects)
-9. [CLI Reference](#cli-reference)
-10. [Building from Source](#building-from-source)
-11. [Further Documentation](#further-documentation)
+<p align="center">
+  <img src="docs/screenshots/history.png" width="32%" />
+  <img src="docs/screenshots/replay.png" width="32%" />
+  <img src="docs/screenshots/collaborator.png" width="32%" />
+</p>
+<p align="center"><sub>History &amp; inspector&nbsp;·&nbsp;Replay editor&nbsp;·&nbsp;Collaborator (out-of-band)</sub></p>
 
 ---
 
-## Prerequisites
+## Download
 
-| Requirement | Version | Notes |
-|---|---|---|
-| Go | 1.23+ | No C compiler needed — pure Go SQLite |
-| Node.js | 18+ | Only needed for building from source |
-| npm | 9+ | Bundled with Node.js |
+**The easy way — grab a pre-built app from the [Releases page](https://github.com/hamedsj/PandoraBox/releases/latest).** No build step.
 
-Runs on macOS, Linux, and Windows.
+| OS | File | Notes |
+|----|------|-------|
+| macOS · Apple Silicon | `PandoraBox-…-arm64.dmg` | |
+| macOS · Intel | `PandoraBox-….dmg` | |
+| Windows | `PandoraBox-…-win.zip` | Portable — unzip and run `PandoraBox.exe` |
+| Linux | `PandoraBox-….AppImage` · `.deb` | |
 
----
+> Builds are **unsigned**. macOS: right-click the app → **Open** (or `xattr -dr com.apple.quarantine PandoraBox.app`). Windows: **More info → Run anyway**.
 
-## Installation
-
-### Option A — Run the pre-built binary
-
-```bash
-./bin/pandorabox serve
-```
-
-Open `http://localhost:7777` in your browser.
-
-### Option B — Build from source
+Prefer the terminal? Any release also runs headless:
 
 ```bash
-git clone <repo>
-cd PandoraBox
-make build
-./bin/pandorabox serve
-```
-
-`make build` runs `npm run build` → copies the React bundle → `go build`. See [Building from Source](#building-from-source) for details.
-
-### Option C — Electron desktop app
-
-```bash
-# Development
-make dev-electron
-
-# Package a distributable
-make electron-mac    # → ui/dist-electron/PandoraBox.dmg
-make electron-win    # → ui/dist-electron/PandoraBox Setup.exe
-make electron-linux  # → ui/dist-electron/PandoraBox.AppImage
+./pandorabox serve      # web UI at http://localhost:7777
 ```
 
 ---
 
-## CA Certificate Setup
+## Quick start
 
-PandoraBox generates a root CA at `~/.pandorabox/ca.crt` on first run. You must install and trust this certificate so your browser accepts the intercepted TLS connections.
+1. **Run it** — open the app (or `pandorabox serve`). The UI is at `http://localhost:7777`.
+2. **Trust the CA** — **Settings → Certificate** installs the root CA with per-platform steps, so HTTPS decrypts cleanly.
+3. **Point your browser** at the proxy: `127.0.0.1:8080`.
 
-### macOS (Chrome / Safari)
-
-```bash
-# Export the CA cert
-./bin/pandorabox ca export > pandorabox-ca.crt
-
-# Install into the System keychain (requires sudo)
-sudo security add-trusted-cert \
-  -d -r trustRoot \
-  -k /Library/Keychains/System.keychain \
-  pandorabox-ca.crt
-
-# Fully restart Chrome
-open -a "Google Chrome" --args --restart
-# or visit chrome://restart
-```
-
-> Install into **System** keychain, not Login. After trusting, Chrome must be fully restarted — closing and reopening the window is not enough.
-
-### macOS (Firefox)
-
-Firefox manages its own certificate store.
-
-1. Open **Firefox → Settings → Privacy & Security → Certificates → View Certificates**
-2. Click **Import** and select `pandorabox-ca.crt`
-3. Check **"Trust this CA to identify websites"** and click OK
-
-### Linux (Chrome / Chromium)
-
-```bash
-# Ubuntu / Debian
-sudo apt install libnss3-tools
-certutil -d sql:$HOME/.pki/nssdb -A -t "CT,," -n "PandoraBox CA" -i pandorabox-ca.crt
-
-# Arch
-sudo trust anchor --store pandorabox-ca.crt
-```
-
-Then restart Chrome.
-
-### Windows (Chrome / Edge)
-
-```powershell
-# Export the cert first
-.\bin\pandorabox.exe ca export > pandorabox-ca.crt
-
-# Import via PowerShell (run as Administrator)
-Import-Certificate -FilePath "pandorabox-ca.crt" -CertStoreLocation Cert:\LocalMachine\Root
-```
-
-Or double-click the `.crt` file → Install Certificate → Local Machine → Trusted Root Certification Authorities.
-
-### Regenerating the CA
-
-```bash
-./bin/pandorabox ca regenerate
-```
-
-This invalidates all previously signed leaf certificates. Reinstall the new CA in your browser after regenerating.
+Traffic now streams into **History** in real time.
 
 ---
 
-## Proxy Configuration
+## What it does
 
-Set your browser or operating system to use HTTP proxy at `127.0.0.1:8080`.
+- **History & Inspector** — live capture with Pretty / Raw / Hex views, decoded bodies, and full-text + regex search.
+- **Intercept** — hold, edit, forward, or drop requests in real time.
+- **Replay** — edit the full raw packet and resend; back/forward through every sent packet and its response.
+- **Scope · Match & Replace · SiteMap** — include/exclude rules, on-the-fly rewrites, and a host/path tree with HAR export.
+- **Intruder** — fuzz a request across payload sets.
+- **Collaborator** — an interactsh-backed host that catches blind DNS/HTTP/SMTP callbacks (SSRF, XXE, RCE).
+- **Flows · Python middleware** — chain requests and script traffic programmatically.
+- **Projects** — per-project SQLite storage and configuration.
 
-### Browser-level (recommended for testing)
-
-**Chrome (via extension):** Use an extension like SwitchyOmega and point it at `127.0.0.1:8080`.
-
-**Firefox:** Settings → General → Network Settings → Manual proxy → HTTP Proxy: `127.0.0.1`, Port: `8080`. Check "Use this proxy server for all protocols".
-
-### System-level (captures all traffic)
-
-**macOS:**
-```
-System Settings → Network → Wi-Fi/Ethernet → Details → Proxies
-→ Web Proxy (HTTP): 127.0.0.1 : 8080
-→ Secure Web Proxy (HTTPS): 127.0.0.1 : 8080
-```
-
-**Linux (GNOME):**
-```
-Settings → Network → Network Proxy → Manual
-HTTP Proxy: 127.0.0.1  Port: 8080
-HTTPS Proxy: 127.0.0.1  Port: 8080
-```
-
-**Command-line tools:**
-```bash
-export http_proxy=http://127.0.0.1:8080
-export https_proxy=http://127.0.0.1:8080
-curl https://example.com
-```
+Full walkthrough → [wiki/features.md](wiki/features.md)
 
 ---
 
-## Running PandoraBox
+## MCP — let an AI drive the proxy
 
-```bash
-# Default: proxy :8080, API+UI :7777, MCP :9090
-./bin/pandorabox serve
+PandoraBox runs an MCP server (default `http://localhost:9090/mcp`) so Claude — or any MCP client — can read traffic, replay requests, manage scope, and control the proxy in plain language.
 
-# Custom ports
-./bin/pandorabox serve \
-  --proxy-port 8888 \
-  --api-port 7777 \
-  --mcp-port 9090
-
-# Specify database location
-./bin/pandorabox serve --db /path/to/pandora.db
-
-# Specify a project folder to open on startup
-./bin/pandorabox serve --project /path/to/myproject
-```
-
-The web UI is available at `http://localhost:7777` once running.
-
----
-
-## UI Overview
-
-| Page | Route | Purpose |
-|---|---|---|
-| **History** | `/history` | Browsable, filterable table of all captured requests. Click a row to inspect headers and body. |
-| **Intercept** | `/intercept` | Hold, inspect, modify, forward, or drop requests in real time. |
-| **Replay** | `/replay` | Re-send any captured request with full raw-packet editing. |
-| **SiteMap** | `/sitemap` | Tree view of traffic organized by host and path. Multi-select and export. |
-| **Scope** | `/scope` | Define include/exclude rules to limit which hosts are captured. |
-| **Settings** | `/settings` | Theme, fonts, keyboard shortcuts, CA certificate, proxy port, MCP toggle. |
-
-### History
-
-- Virtualized table, handles thousands of rows without slowdown.
-- **Filters** (toolbar button or `Ctrl+F`): search by keyword (plain, regex, negative), host, method, status code, file extension, content-type. Multiple content-type chips can be selected together.
-- Right-click any row → **Send to Replay**.
-- WebSocket connections appear in a separate tab; click to view live frames with direction, opcode, and decoded payload.
-
-### Intercept
-
-- Toggle interception on/off from the toolbar or via keyboard shortcut.
-- Optionally filter by host, method, or path — only matching requests are held.
-- Per-request actions: **Forward** (send as-is), **Drop** (return 502 to browser), **Edit** (Monaco editor for raw packet editing) then **Modify & Forward**.
-- **Forward All** clears the entire queue at once.
-
-### Replay
-
-- Click **Send to Replay** from History or SiteMap to load a request into the queue.
-- Edit the raw HTTP packet in Monaco (full syntax highlighting).
-- **Auto Content-Length** toggle automatically recalculates `Content-Length` when the body changes.
-- Results (status code, headers, body) appear inline after sending.
-
-### SiteMap
-
-- Tree: host → path segments → request leaves. Each leaf shows method, status, size, and duration.
-- Leaves prefer 2xx responses — if multiple requests hit the same route, the 2xx one is shown.
-- **Checkboxes** on every row and branch node. Selecting a branch cascades to all leaves.
-- **Export** selected requests as JSON or HAR (compatible with Burp Suite / browser DevTools).
-
-### Scope
-
-Four pattern types: `exact`, `contains`, `wildcard` (glob `*`), `regex`. Define include and exclude rules independently. Out-of-scope traffic is forwarded transparently with no storage overhead.
-
----
-
-## MCP Server — Claude Desktop Integration
-
-PandoraBox exposes an MCP (Model Context Protocol) server over SSE at `http://localhost:9090/sse`. Connect Claude Desktop to it and Claude can inspect traffic, replay requests, manage scope, and control the proxy — all through natural language.
-
-### Connecting Claude Desktop
-
-Add the following to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Add it to your client config (e.g. Claude Desktop's `claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
-    "pandorabox": {
-      "url": "http://localhost:9090/sse"
-    }
+    "pandorabox": { "url": "http://localhost:9090/mcp" }
   }
 }
 ```
 
-Restart Claude Desktop. You should see PandoraBox listed under connected tools.
-
-### Disabling MCP per project
-
-In Settings → MCP, you can disable MCP access for the current project. This prevents Claude from reading or modifying traffic in sensitive projects.
-
-### Available MCP Tools
-
-PandoraBox provides 20 tools. Full parameter documentation is in [wiki/mcp.md](wiki/mcp.md).
-
-**Proxy control**
-- `proxy_status` — current running state, port, request count, queue length
-- `proxy_start` — start the proxy listener
-- `proxy_stop` — stop the proxy listener
-
-**Traffic**
-- `list_requests` — list captured requests with filters (host, method, status, search, pagination)
-- `get_request` — fetch a single request with full headers and body
-- `search_requests` — keyword search across all traffic
-- `delete_request` — delete a request and its response
-
-**Replay**
-- `replay_request` — replay a captured request, optionally modifying URL, headers, or body
-- `send_request` — send a brand-new HTTP request through the proxy
-
-**Intercept**
-- `intercept_toggle` — enable or disable interception
-- `list_intercept_queue` — list all currently held requests
-- `intercept_forward` — forward a held request unchanged
-- `intercept_drop` — drop a held request (browser gets 502)
-- `intercept_modify` — forward with a modified raw HTTP packet (base64)
-
-**Project & configuration**
-- `get_project` — current project name, path, proxy config, scope settings
-- `update_project` — update name, port, intercept state, scope rules
-- `list_recent_projects` — list recently opened projects
-- `open_project` — switch to an existing project folder
-- `new_project` — create and switch to a new project
-
-**Certificate**
-- `get_ca_cert` — retrieve the CA certificate PEM and installation instructions
-
-### Example Claude prompts
+Then just ask:
 
 ```
-"Show me all POST requests to api.example.com from the last session."
-
-"Turn on interception, then forward everything except requests to /admin."
-
-"Replay request #47 but change the Authorization header to Bearer abc123."
-
-"Set scope to only capture *.example.com and disable MCP for this project."
-
-"What's the response body of the most recent 500 error?"
+"Show every POST to api.example.com, then replay #47 with a Bearer token."
+"Turn on interception and forward everything except /admin."
+"Set scope to *.example.com only."
 ```
+
+Works with Claude Desktop, Claude Code, Codex, Gemini, and Qwen. Toggle it off per project in **Settings → MCP**. Full tool reference → [wiki/mcp.md](wiki/mcp.md)
 
 ---
 
-## Projects
+## Build from source
 
-PandoraBox organizes traffic and settings into **projects**. Each project is a folder on disk containing:
-
-```
-myproject/
-├── project.json   # proxy port, scope rules, filters, MCP flag
-└── pandora.db       # SQLite traffic database
-```
-
-- On first launch, a temporary project is created automatically.
-- Use **File → New Project** or **File → Open Project** to switch.
-- **Save As** copies the current project to a new folder.
-- Recent projects (up to 10) appear in the project switcher dropdown.
-- Project settings (scope, filters, proxy port) are saved per-project. Theme and keyboard shortcuts are global (saved in `localStorage`).
-
----
-
-## CLI Reference
-
-```
-pandorabox serve [flags]
-  --proxy-port int   MITM proxy listen port (default 8080)
-  --api-port   int   REST API + WebSocket + UI port (default 7777)
-  --mcp-port   int   MCP SSE server port (default 9090)
-  --db         path  SQLite database path (default: inside project folder)
-  --project    path  Project folder to open on startup
-
-pandorabox ca export
-  Print the CA certificate PEM to stdout.
-
-pandorabox ca regenerate
-  Regenerate the root CA. All previously signed leaf certs are invalidated.
-  You must reinstall the new CA in your browser.
-```
-
----
-
-## Building from Source
+Requires **Go 1.23+** and **Node 18+**.
 
 ```bash
-# Full build (required after any Go or UI change)
-make build
-# = npm run build  →  cp -r ui/dist cmd/pandorabox/dist  →  go build -o bin/pandorabox
-
-# Development: hot-reload UI, manually restart backend
-make dev-backend   # Go binary on :7777 (serves embedded UI)
-make dev-ui        # Vite dev server with HMR (proxies /api + /ws to :7777)
-
-# Electron development
-make dev-electron
-
-# Package Electron
-make electron-mac
-make electron-win
-make electron-linux
+git clone https://github.com/hamedsj/PandoraBox.git
+cd PandoraBox
+make build          # npm build → embed UI → go build
+./bin/pandorabox serve
 ```
 
-> **Important:** Always use `make build`, not `npm run build` alone. The Go binary embeds the React bundle from `cmd/pandorabox/dist/`. The Makefile copies `ui/dist` there after the npm build. Running only `npm run build` will leave the binary with a stale UI.
+Desktop app: `make dev-electron` to run · `make electron-mac` / `electron-win` / `electron-linux` to package.
+
+> Always use `make build`, never `npm run build` alone — the Go binary embeds the React bundle that the Makefile copies into place.
 
 ---
 
-## Further Documentation
+## Docs
 
-| Document | Contents |
+| | |
 |---|---|
-| [wiki/features.md](wiki/features.md) | Complete feature guide: every UI page, every option, how to use everything |
-| [wiki/architecture.md](wiki/architecture.md) | System architecture, Go package map, data flow, key technical decisions |
-| [wiki/api.md](wiki/api.md) | Complete REST API reference, request/response shapes, WebSocket events |
-| [wiki/mcp.md](wiki/mcp.md) | Full MCP tool reference with parameters, return types, and examples |
-| [wiki/development.md](wiki/development.md) | Development workflow, project structure, build pipeline internals |
-| [wiki/database.md](wiki/database.md) | SQLite schema reference |
-| [CLAUDE.md](CLAUDE.md) | AI assistant context (build constraints, non-obvious rules) |
+| [Features](wiki/features.md) | Every page and option |
+| [MCP](wiki/mcp.md) | Full tool reference |
+| [API](wiki/api.md) | REST + WebSocket |
+| [Architecture](wiki/architecture.md) | Packages and data flow |
+| [Development](wiki/development.md) | Workflow and build pipeline |
+| [Database](wiki/database.md) | SQLite schema |
+
+---
+
+<div align="center"><sub>Apache-2.0 · For authorized security testing, CTFs, and research only.</sub></div>
