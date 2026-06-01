@@ -221,6 +221,20 @@ ipcMain.handle('launcher:get-recent-projects', async () => {
   }
 })
 
+// Remove a project from the recent list only — the project folder and its
+// files are left untouched.
+ipcMain.handle('launcher:remove-recent-project', async (_e, projectPath) => {
+  const configPath = path.join(os.homedir(), '.pandorabox', 'config.json')
+  let appCfg = { recent_projects: [], last_project: '' }
+  try { appCfg = JSON.parse(fs.readFileSync(configPath, 'utf8')) } catch {}
+
+  appCfg.recent_projects = (appCfg.recent_projects || []).filter(p => p !== projectPath)
+  if (appCfg.last_project === projectPath) appCfg.last_project = ''
+
+  try { fs.writeFileSync(configPath, JSON.stringify(appCfg, null, 2)) } catch {}
+  return { ok: true }
+})
+
 ipcMain.handle('launcher:read-project-config', async (_e, projectPath) => {
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(projectPath, 'project.json'), 'utf8'))

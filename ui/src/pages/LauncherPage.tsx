@@ -10,6 +10,8 @@ interface LauncherBridge {
     projectNames: Record<string, string>
   }>
   readProjectConfig: (path: string) => Promise<{ name: string; proxyPort: number; mcpPort: number }>
+  removeRecentProject: (path: string) => Promise<{ ok?: true }>
+
   checkPort: (port: number) => Promise<boolean>
   openFolder: () => Promise<string | null>
   newFolder: () => Promise<string | null>
@@ -120,6 +122,20 @@ export function LauncherPage() {
     await applySelection(folder)
   }
 
+  // Drop a project from the recent list only (files are left on disk). If the
+  // removed project was selected, fall back to the temp project / first entry.
+  async function handleRemoveRecent(e: React.MouseEvent, path: string) {
+    e.stopPropagation()
+    try { await api!.removeRecentProject(path) } catch { /* keep UI responsive */ }
+    const next = projects.filter(p => p.path !== path)
+    setProjects(next)
+    if (selected === path) {
+      const fallback = next.find(p => p.isTemp) || next[0]
+      if (fallback) await applySelection(fallback.path)
+      else setSelected(null)
+    }
+  }
+
   async function handleLaunch() {
     setError('')
     const pp = parseInt(proxyPort, 10)
@@ -188,7 +204,7 @@ export function LauncherPage() {
                 style={noDrag}
                 onClick={() => applySelection(proj.path)}
                 className={cn(
-                  'w-full flex items-center gap-2 px-3 py-[7px] rounded-lg text-left transition-all border-[1.5px] text-[12.5px]',
+                  'group w-full flex items-center gap-2 px-3 py-[7px] rounded-lg text-left transition-all border-[1.5px] text-[12.5px]',
                   selected === proj.path
                     ? 'bg-primary/10 border-primary/40 text-foreground font-medium'
                     : 'bg-transparent border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -199,13 +215,25 @@ export function LauncherPage() {
                   selected === proj.path ? 'bg-primary' : 'bg-border',
                 )} />
                 <span className="flex-1 truncate">{proj.name}</span>
-                {proj.isTemp && (
+                {proj.isTemp ? (
                   <span className={cn(
                     'text-[9px] font-bold uppercase tracking-wide px-[5px] py-[2px] rounded shrink-0',
                     selected === proj.path
                       ? 'bg-primary/20 text-primary'
                       : 'bg-muted text-muted-foreground',
                   )}>Temp</span>
+                ) : (
+                  <span
+                    role="button"
+                    aria-label={`Remove ${proj.name} from recent projects`}
+                    title="Remove from recent (keeps files)"
+                    onClick={(e) => handleRemoveRecent(e, proj.path)}
+                    className="shrink-0 flex items-center justify-center w-5 h-5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all"
+                  >
+                    <svg width="9" height="9" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                      <line x1="1" y1="1" x2="10" y2="10" /><line x1="10" y1="1" x2="1" y2="10" />
+                    </svg>
+                  </span>
                 )}
               </button>
             ))}
