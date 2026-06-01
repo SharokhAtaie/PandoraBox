@@ -9,7 +9,7 @@
 [**Download**](https://github.com/hamedsj/PandoraBox/releases/latest) · [Quick start](#quick-start) · [MCP](#mcp--let-an-ai-drive-the-proxy) · [Docs](wiki/features.md)
 
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
-![release](https://img.shields.io/github/v/release/hamedsj/PandoraBox)
+![release](https://img.shields.io/github/v/release/hamedsj/PandoraBox?sort=semver)
 ![platforms](https://img.shields.io/badge/macOS%20·%20Windows%20·%20Linux-lightgrey)
 
 </div>
