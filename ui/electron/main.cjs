@@ -70,7 +70,14 @@ function createLauncher() {
   })
   launcherWindow.loadFile(distIndex, { query: { launcher: '1' } })
   launcherWindow.once('ready-to-show', () => launcherWindow.show())
-  launcherWindow.on('closed', () => { launcherWindow = null })
+  launcherWindow.on('closed', () => {
+    launcherWindow = null
+    // Dismissing the launcher before a project is launched leaves no tray and
+    // no main window, so quit the whole app. During a real launch the backend
+    // is already spawned (and the main window is being created), so this guard
+    // is skipped.
+    if (!mainWindow && !backendProcess) app.quit()
+  })
 }
 
 function waitForBackend(retries = 30) {
