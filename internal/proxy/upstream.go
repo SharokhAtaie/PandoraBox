@@ -175,18 +175,75 @@ func normalizeRequestHost(req *http.Request, scheme string) *http.Request {
 	return r2
 }
 
+// chromeHeaderOrder is the order in which Chrome emits HTTP/2 request headers
+// (after the pseudo-headers). Header order is a fingerprinting signal as strong
+// as JA3/JA4 — an otherwise-perfect Chrome ClientHello paired with Go's
+// unordered map iteration is an obvious tell to Azure / Akamai / Cloudflare.
+//
+// fhttp's HeaderOrderKey ranks headers present in this list by their index and
+// appends any not listed (lowercased, lexicographically) at the end, so adding
+// headers here is lossless: nothing is dropped, only reordered to match Chrome.
+var chromeHeaderOrder = []string{
+	"host",
+	"pragma",
+	"cache-control",
+	"sec-ch-ua",
+	"sec-ch-ua-mobile",
+	"sec-ch-ua-platform",
+	"sec-ch-ua-arch",
+	"sec-ch-ua-bitness",
+	"sec-ch-ua-full-version",
+	"sec-ch-ua-full-version-list",
+	"sec-ch-ua-model",
+	"sec-ch-ua-platform-version",
+	"sec-ch-ua-wow64",
+	"device-memory",
+	"dpr",
+	"viewport-width",
+	"rtt",
+	"downlink",
+	"ect",
+	"upgrade-insecure-requests",
+	"dnt",
+	"user-agent",
+	"content-length",
+	"content-type",
+	"accept",
+	"origin",
+	"x-requested-with",
+	"sec-fetch-site",
+	"sec-fetch-mode",
+	"sec-fetch-user",
+	"sec-fetch-dest",
+	"referer",
+	"accept-encoding",
+	"accept-language",
+	"cookie",
+	"priority",
+}
+
 // toFHTTPRequest converts a standard net/http request to a bogdanfinn/fhttp
 // request for use with the Chrome h2 transport. Both types have identical
 // field structure (fhttp is a fork of net/http) and share the same primitive
-// types, so the conversion is a shallow field copy.
+// types. The header map is copied (not aliased) so we can attach the Chrome
+// header-order hint without mutating the caller's request.
 func toFHTTPRequest(req *http.Request) *fhttp.Request {
+	// Copy headers into a fresh fhttp.Header and attach the Chrome header order.
+	// fhttp strips the HeaderOrderKey/PHeaderOrderKey magic keys from the wire;
+	// they only steer the emitted order.
+	fh := make(fhttp.Header, len(req.Header)+1)
+	for k, v := range req.Header {
+		fh[k] = v
+	}
+	fh[fhttp.HeaderOrderKey] = chromeHeaderOrder
+
 	freq := &fhttp.Request{
 		Method:           req.Method,
 		URL:              req.URL,
 		Proto:            req.Proto,
 		ProtoMajor:       req.ProtoMajor,
 		ProtoMinor:       req.ProtoMinor,
-		Header:           fhttp.Header(req.Header),
+		Header:           fh,
 		Body:             req.Body,
 		GetBody:          req.GetBody,
 		ContentLength:    req.ContentLength,
