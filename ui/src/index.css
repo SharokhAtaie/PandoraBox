@@ -17,7 +17,7 @@
   --accent-foreground: 222 20% 8%;
   /* Themeable font settings — overridden at runtime by ThemeProvider */
   --font-mono: 'JetBrains Mono', monospace;
-  --font-size-base: 13px;
+  --font-size-base: 14px;
 }
 
 * {
