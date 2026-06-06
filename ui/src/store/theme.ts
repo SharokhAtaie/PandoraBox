@@ -27,7 +27,8 @@ interface ThemeStore {
   variant: ThemeVariant
   // Font settings
   fontFamily: FontFamily
-  fontSize: number // in pixels (10-20)
+  fontSize: number       // app UI font size in pixels (10-20)
+  editorFontSize: number // Monaco editor font size in pixels (10-20)
   // Accent color
   accentColor: AccentColor
 
@@ -36,6 +37,7 @@ interface ThemeStore {
   setVariant: (v: ThemeVariant) => void
   setFontFamily: (f: FontFamily) => void
   setFontSize: (s: number) => void
+  setEditorFontSize: (s: number) => void
   setAccentColor: (c: AccentColor) => void
 }
 
@@ -54,11 +56,13 @@ export const useThemeStore = create<ThemeStore>()(
       variant: 'midnight',
       fontFamily: 'jetbrains',
       fontSize: 13,
+      editorFontSize: 13,
       accentColor: 'red',
       setMode: (mode) => set({ mode, variant: defaultVariants[mode] }),
       setVariant: (variant) => set({ variant }),
       setFontFamily: (fontFamily) => set({ fontFamily }),
       setFontSize: (fontSize) => set({ fontSize }),
+      setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
       setAccentColor: (accentColor) => set({ accentColor }),
     }),
     { name: 'pandora-theme' }

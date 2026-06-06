@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Select } from '@/components/ui/Select'
 import type { MiddlewareNode } from '@/api/client'
+import { useThemeStore } from '@/store/theme'
 
 const TYPE_OPTIONS = [
   { value: 'request',  label: 'Request' },
@@ -56,6 +57,7 @@ export function NodeEditorDialog({ node, open, onClose, onSave, onDelete }: Node
   const [type, setType] = useState<MiddlewareNode['type']>('request')
   const [enabled, setEnabled] = useState(true)
   const [code, setCode] = useState('')
+  const editorFontSize = useThemeStore((s) => s.editorFontSize)
 
   useEffect(() => {
     if (node) {
@@ -179,7 +181,7 @@ export function NodeEditorDialog({ node, open, onClose, onSave, onDelete }: Node
                 theme="vs-dark"
                 options={{
                   minimap: { enabled: false },
-                  fontSize: 12,
+                  fontSize: editorFontSize,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
                   wordWrap: 'on',

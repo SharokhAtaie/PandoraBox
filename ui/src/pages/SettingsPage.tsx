@@ -122,11 +122,13 @@ export function SettingsPage() {
     variant,
     fontFamily,
     fontSize,
+    editorFontSize,
     accentColor,
     setMode,
     setVariant,
     setFontFamily,
     setFontSize,
+    setEditorFontSize,
     setAccentColor,
   } = useThemeStore()
   const shortcutEnabled = useShortcutStore((state) => state.enabled)
@@ -195,16 +197,21 @@ export function SettingsPage() {
   }, [project?.mcp_port, project?.mcp_disabled])
   const availableVariants = getAvailableVariants(mode)
   const [fontSizeValue, setFontSizeValue] = useState(fontSize.toString())
+  const [editorFontSizeValue, setEditorFontSizeValue] = useState(editorFontSize.toString())
 
   // Get current theme colors for preview
   const currentThemeColors = mode === 'dark'
     ? darkThemeColors[variant as DarkTheme]
     : lightThemeColors[variant as LightTheme]
 
-  // Update font size on slider change
   const handleFontSizeChange = (value: string) => {
     setFontSizeValue(value)
     setFontSize(parseInt(value, 10))
+  }
+
+  const handleEditorFontSizeChange = (value: string) => {
+    setEditorFontSizeValue(value)
+    setEditorFontSize(parseInt(value, 10))
   }
 
   async function saveUpstreamProxy() {
@@ -426,14 +433,17 @@ export function SettingsPage() {
               <h2 className="text-sm font-medium">Typography</h2>
             </div>
 
-            {/* Font Size Slider */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-xs text-muted-foreground">Font Size</label>
-                <span className="text-xs text-primary font-medium">{fontSize}px</span>
+            {/* App Font Size */}
+            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs font-medium text-foreground">App Font Size</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Sidebar, tables, panels and all UI text</div>
+                </div>
+                <span className="text-xs text-primary font-semibold tabular-nums">{fontSize}px</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">10px</span>
+                <span className="text-[11px] text-muted-foreground w-6">10</span>
                 <input
                   type="range"
                   min="10"
@@ -446,9 +456,9 @@ export function SettingsPage() {
                     background: `linear-gradient(to right, hsl(${accentColorMap[accentColor]}) 0%, hsl(${accentColorMap[accentColor]}) ${((fontSize - 10) / 10) * 100}%, hsl(var(--border)) ${((fontSize - 10) / 10) * 100}%, hsl(var(--border)) 100%)`,
                   }}
                 />
-                <span className="text-xs text-muted-foreground">20px</span>
+                <span className="text-[11px] text-muted-foreground w-6 text-right">20</span>
               </div>
-              <div className="flex justify-between mt-1">
+              <div className="flex justify-between">
                 {['10', '12', '14', '16', '18', '20'].map((size) => (
                   <button
                     key={size}
@@ -456,6 +466,49 @@ export function SettingsPage() {
                     className={cn(
                       'text-[10px] px-1.5 py-0.5 rounded transition-colors',
                       fontSize === parseInt(size, 10)
+                        ? 'text-primary font-medium'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Editor Font Size */}
+            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs font-medium text-foreground">Editor Font Size</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Request / response editors and code panels</div>
+                </div>
+                <span className="text-xs text-primary font-semibold tabular-nums">{editorFontSize}px</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-muted-foreground w-6">10</span>
+                <input
+                  type="range"
+                  min="10"
+                  max="20"
+                  step="1"
+                  value={editorFontSizeValue}
+                  onChange={(e) => handleEditorFontSizeChange(e.target.value)}
+                  className="flex-1 h-2 bg-muted rounded-full appearance-none cursor-pointer outline-none"
+                  style={{
+                    background: `linear-gradient(to right, hsl(${accentColorMap[accentColor]}) 0%, hsl(${accentColorMap[accentColor]}) ${((editorFontSize - 10) / 10) * 100}%, hsl(var(--border)) ${((editorFontSize - 10) / 10) * 100}%, hsl(var(--border)) 100%)`,
+                  }}
+                />
+                <span className="text-[11px] text-muted-foreground w-6 text-right">20</span>
+              </div>
+              <div className="flex justify-between">
+                {['10', '12', '14', '16', '18', '20'].map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => handleEditorFontSizeChange(size)}
+                    className={cn(
+                      'text-[10px] px-1.5 py-0.5 rounded transition-colors',
+                      editorFontSize === parseInt(size, 10)
                         ? 'text-primary font-medium'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
@@ -494,7 +547,7 @@ export function SettingsPage() {
             <div>
               <label className="text-xs text-muted-foreground block mb-2">Preview</label>
               <div className="bg-muted/50 rounded-lg p-4 border border-border overflow-hidden">
-                <pre className="whitespace-pre-wrap break-words leading-relaxed" style={{ fontFamily: fontFamilyMap[fontFamily].stack, fontSize: `${fontSize}px` }}>
+                <pre className="whitespace-pre-wrap break-words leading-relaxed" style={{ fontFamily: fontFamilyMap[fontFamily].stack, fontSize: `${editorFontSize}px` }}>
                   {sampleText}
                 </pre>
               </div>

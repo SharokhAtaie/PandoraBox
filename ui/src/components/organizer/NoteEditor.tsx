@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import Editor from '@monaco-editor/react'
 import { Pencil, Eye } from 'lucide-react'
+import { useThemeStore } from '@/store/theme'
 
 interface Props {
   value: string
@@ -17,6 +18,7 @@ export function NoteEditor({ value, onChange, onSave, placeholder = 'Click to ad
   const [editing, setEditing] = useState(false)
   const saveRef = useRef(onSave)
   saveRef.current = onSave
+  const editorFontSize = useThemeStore((s) => s.editorFontSize)
 
   const handleMount = (_editor: unknown, monaco: unknown) => {
     // Cmd/Ctrl+S to save
@@ -51,7 +53,7 @@ export function NoteEditor({ value, onChange, onSave, placeholder = 'Click to ad
             lineNumbers: 'off',
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
-            fontSize: 13,
+            fontSize: editorFontSize,
             padding: { top: 8, bottom: 8 },
             overviewRulerLanes: 0,
             renderLineHighlight: 'none',

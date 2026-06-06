@@ -22,7 +22,7 @@ export function InterceptPanel() {
   const status = useProxyStore((s) => s.status)
   const addToReplay = useReplayQueueStore((s) => s.addToReplay)
   const mode = useThemeStore((s) => s.mode)
-  const fontSize = useThemeStore((s) => s.fontSize)
+  const fontSize = useThemeStore((s) => s.editorFontSize)
 
   // Queue is the source of truth in the store so it stays live with intercept
   // events from MCP/REST. Local writes prime the store too.

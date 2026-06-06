@@ -79,11 +79,11 @@ export function CodeViewer({
   const mode = useThemeStore((state) => state.mode)
   const variant = useThemeStore((state) => state.variant)
   const accentColor = useThemeStore((state) => state.accentColor)
-  const fontSize = useThemeStore((state) => state.fontSize)
+  const editorFontSize = useThemeStore((state) => state.editorFontSize)
   const fontFamily = useThemeStore((state) => state.fontFamily)
   const monaco = useMonaco()
   const themeName = mode === 'dark' ? 'pandora-dark' : 'pandora-light'
-  const resolvedTypography = getResolvedTypography(fontSize)
+  const resolvedTypography = getResolvedTypography(editorFontSize)
   const [editorHeight, setEditorHeight] = useState<number>(minHeight)
   const applyThemeDefinition = (targetMonaco: Parameters<NonNullable<BeforeMount>>[0]) => {
     registerHttpLanguage(targetMonaco)
