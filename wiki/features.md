@@ -1,6 +1,6 @@
 # Features Guide
 
-A complete reference for every feature in PandoraBox — how it works and how to use it.
+A complete reference for every feature in PandoraBox.
 
 ---
 
@@ -9,17 +9,25 @@ A complete reference for every feature in PandoraBox — how it works and how to
 1. [History](#history)
 2. [Intercept](#intercept)
 3. [Replay](#replay)
-4. [SiteMap](#sitemap)
-5. [Scope](#scope)
-6. [Request Inspector](#request-inspector)
-7. [WebSocket Inspector](#websocket-inspector)
-8. [Filters](#filters)
-9. [Projects](#projects)
-10. [Settings — Appearance](#settings--appearance)
-11. [Settings — Keyboard Shortcuts](#settings--keyboard-shortcuts)
-12. [Settings — Certificate](#settings--certificate)
-13. [Settings — Proxy](#settings--proxy)
-14. [Settings — MCP](#settings--mcp)
+4. [Intruder](#intruder)
+5. [SiteMap](#sitemap)
+6. [Scope](#scope)
+7. [Match & Replace](#match--replace)
+8. [Middleware](#middleware)
+9. [Flows](#flows)
+10. [Organizer](#organizer)
+11. [Converter](#converter)
+12. [Collaborator](#collaborator)
+13. [Team Sync](#team-sync)
+14. [Request Inspector](#request-inspector)
+15. [WebSocket Inspector](#websocket-inspector)
+16. [Filters](#filters)
+17. [Projects](#projects)
+18. [Settings — Appearance](#settings--appearance)
+19. [Settings — Keyboard Shortcuts](#settings--keyboard-shortcuts)
+20. [Settings — Certificate](#settings--certificate)
+21. [Settings — Proxy](#settings--proxy)
+22. [Settings — MCP](#settings--mcp)
 
 ---
 
@@ -27,11 +35,11 @@ A complete reference for every feature in PandoraBox — how it works and how to
 
 **Route:** `/history`
 
-The History page shows every HTTP request captured by the proxy in a scrollable, filterable table. It is the primary workspace for reviewing traffic.
+The History page shows every HTTP request captured by the proxy in a scrollable, virtualised table. It is the primary workspace for reviewing traffic.
 
 ### Request Table
 
-The table uses virtual rendering — it can display thousands of rows without performance degradation. Columns:
+The table uses virtual rendering — it handles thousands of rows without performance degradation. Columns:
 
 | Column | Description |
 |---|---|
@@ -42,30 +50,28 @@ The table uses virtual rendering — it can display thousands of rows without pe
 | Size | Response body size |
 | Duration | Round-trip time in milliseconds |
 
-- Click any row to open it in the **Request Inspector** panel on the right or bottom.
-- **Right-click** any row for a context menu → **Send to Replay**.
-- The table auto-updates in real time as new requests arrive through the proxy — no manual refresh needed.
+- Click any row to open it in the **Request Inspector** panel.
+- **Right-click** any row for a context menu: Send to Replay, Send to Intruder, Copy URL, Copy as cURL, Delete, and more.
+- The table auto-updates in real time as new requests arrive — no manual refresh needed.
 
 ### HTTP vs WebSocket Tabs
 
-The table has two tabs above it:
-
-- **HTTP** — all plain HTTP and HTTPS requests (default)
-- **WebSocket** — all WebSocket upgrade connections, shown separately
-
-Switching to the WebSocket tab replaces the inspector with the **WebSocket Inspector** when a connection is selected.
+- **HTTP** — all HTTP and HTTPS requests (default)
+- **WebSocket** — WebSocket upgrade connections shown separately
 
 ### Inspector Position
 
-The inspector panel can be positioned to the **right** (side-by-side) or **bottom** (stacked). Toggle this in Settings → Appearance, or from the inspector panel's own toolbar. A drag handle between the panels lets you resize the split.
+Toggle between **right** (side-by-side) and **bottom** (stacked) from the inspector toolbar. The divider is draggable.
 
-### Sending to Replay
+### Sending Requests Elsewhere
 
-Three ways to send a request to the Replay queue:
+- Right-click → **Send to Replay**
+- Right-click → **Send to Intruder**
+- Keyboard: `Ctrl+R` / `Cmd+R` to send to Replay
 
-1. Right-click a row → **Send to Replay**
-2. Select a request and press `Ctrl+R` / `Cmd+R`
-3. Click the **Send to Replay** button inside the Request Inspector
+### Clearing Traffic
+
+Click **Clear All** in the toolbar, or use `POST /api/requests/clear`. This permanently deletes all captured requests and responses for the current project.
 
 ---
 
@@ -73,61 +79,45 @@ Three ways to send a request to the Replay queue:
 
 **Route:** `/intercept`
 
-The Intercept page lets you hold HTTP requests in real time, inspect them, optionally modify them, and then forward or drop them. This is the core tool for testing how an application reacts to tampered requests.
+The Intercept page holds HTTP requests in real time so you can inspect, modify, forward, or drop them before they reach the server.
 
-### Enabling / Disabling Interception
+### Enabling / Disabling
 
-- **Toggle button** in the top toolbar — click to flip the state.
-- **Keyboard shortcut:** `Ctrl+Shift+I` / `Cmd+Shift+I`
-- When interception is on, the toggle glows green and a live badge shows the queue depth.
-- Interception state is saved per project in `project.json`.
+- **Toggle button** in the toolbar — click to flip the state
+- **Keyboard:** `Ctrl+Shift+I` / `Cmd+Shift+I`
+- When on, the toggle glows green and a live counter shows the queue depth
+- The state is saved per project
 
 ### Intercept Filter
 
-By default, all in-scope requests are held. You can narrow this with the filter inputs below the toggle:
+Narrows which in-scope requests are held:
 
 | Filter | Behavior |
 |---|---|
-| **Host** | Substring match — e.g. `api.` holds only requests to hosts containing "api." |
-| **Method** | Exact match (case-insensitive) — e.g. `POST` |
-| **Path** | Substring match — e.g. `/admin` |
+| Host | Substring match |
+| Method | Exact match (case-insensitive) |
+| Path | Substring match |
 
-All three filters are ANDed. Empty fields match everything.
-
-### The Hold Queue
-
-Each held request appears as a card in the queue. Selecting a card shows the full request in the editor panel on the right.
+All three fields are ANDed. Empty fields match everything.
 
 ### Per-Request Actions
 
-With a request selected:
-
-| Action | Button | Shortcut | Description |
-|---|---|---|---|
-| **Forward** | Forward | `Ctrl+Shift+F` | Send the request to the server unchanged |
-| **Drop** | Drop | `Ctrl+Shift+D` | Discard the request; browser gets `502 Bad Gateway` |
-| **Edit** | Edit | `Ctrl+Shift+M` | Open the raw HTTP packet in Monaco editor |
-| **Modify & Forward** | (after editing) | `Ctrl+Enter` | Send the edited packet to the server |
+| Action | Shortcut | Description |
+|---|---|---|
+| Forward | `Ctrl+Shift+F` | Send the request upstream unchanged |
+| Drop | `Ctrl+Shift+D` | Discard — browser receives `502 Bad Gateway` |
+| Edit | `Ctrl+Shift+M` | Open raw packet in Monaco editor |
+| Modify & Forward | `Ctrl+Enter` | Send the edited packet upstream |
+| Forward All | — | Resolve the entire queue at once |
+| Drop All | — | Discard every queued request at once |
 
 ### Raw Packet Editor
 
-Clicking **Edit** opens a Monaco editor pre-populated with the raw HTTP/1.1 request text:
+Edit the full raw HTTP/1.1 packet — method, path, headers, body — and forward the modified version. Any header can be added, changed, or deleted.
 
-```
-POST /api/login HTTP/1.1
-Host: api.example.com
-Content-Type: application/json
-Content-Length: 35
-
-{"username":"admin","password":"x"}
-```
-
-Edit any part of the packet — method, path, headers, or body. Then press `Ctrl+Enter` / `Cmd+Enter` (or click **Modify & Forward**) to send the modified version.
-
-### Navigating the Queue
+### Queue Navigation
 
 - `Alt+↑` / `Alt+↓` — move between queued requests
-- **Forward All** button — resolves the entire queue at once, forwarding every held request
 
 ---
 
@@ -135,57 +125,125 @@ Edit any part of the packet — method, path, headers, or body. Then press `Ctrl
 
 **Route:** `/replay`
 
-The Replay page lets you re-send any captured request — either from History or built from scratch — with full raw packet editing.
+The Replay page lets you re-send any captured request — or build one from scratch — with full raw packet editing.
 
 ### Building the Queue
 
-The replay queue is a list of requests ready to be sent. Add items by:
+Add items by:
 
 - Right-clicking in History → **Send to Replay**
-- Pressing `Ctrl+R` / `Cmd+R` with a request selected in History or Intercept
-- Using the **Duplicate** button on an existing replay item (to try variations)
+- Pressing `Ctrl+R` / `Cmd+R` with a request selected
+- Clicking **Duplicate** on an existing item (for A/B testing)
 
-### The Raw Packet Editor
+The queue persists per project across page reloads. Response results are also persisted per history entry — navigating back to a previous send with the arrow buttons restores its response.
 
-Each queue item has a full Monaco editor showing the raw HTTP/1.1 request:
+### Raw Packet Editor
 
-```
-GET /api/users?page=2 HTTP/1.1
-Host: api.example.com
-Authorization: Bearer eyJhbGc...
-```
+Full Monaco editor showing the raw HTTP request. Edit method, URL, headers, body freely.
 
-You can edit anything — method, URL, headers, body. The editor has syntax highlighting and full keyboard navigation.
+**HTTPS vs HTTP scheme toggle** — switch between `https://` and `http://` per item without editing the raw packet.
 
 ### Sending
 
-- Click the **Send** button on a queue item, or
-- Press `Ctrl+Enter` / `Cmd+Enter` while focused in the editor
-
-The response appears inline below the request card after the server replies.
+- **Send** button on the item card
+- `Ctrl+Enter` / `Cmd+Enter` while the editor is focused
+- A **Cancel** button appears while the request is in flight
 
 ### Auto Content-Length
 
-When enabled (Settings → Proxy → Replay Editor), PandoraBox automatically recalculates the `Content-Length` header whenever you change the body. This prevents `400 Bad Request` errors from content-length mismatches. Toggle it per session in Settings; the preference is persisted.
+When enabled (Settings → Proxy), PandoraBox automatically recalculates `Content-Length` when the body changes. Prevents `400 Bad Request` from length mismatches.
 
-### Duplicate
+### Navigation History
 
-The **Duplicate** button clones a queue item so you can modify one copy while keeping the original. Useful for A/B testing two versions of a request.
-
-### Remove
-
-The **×** button removes a single item from the queue. **Clear All** empties the entire queue.
+Each queue item maintains a per-item history of previous sends. The back (`←`) and forward (`→`) arrow buttons step through that history, restoring both the raw packet and the response for each historical send.
 
 ### Results
 
-After sending, the result shows:
+After sending, the response shows:
 
-- Status code and status text
+- Status code, protocol, and reason phrase
 - Response headers
-- Response body (decoded, with syntax highlighting)
+- Decoded response body with syntax highlighting
 - Duration and size
 
-Failed requests (network errors, timeouts) show an error badge.
+---
+
+## Intruder
+
+**Route:** `/intruder`
+
+Intruder automates parameterised fuzzing of HTTP requests. It supports multiple attack types and payload sources, and presents results in a sortable table.
+
+### Sessions
+
+Each "Send to Intruder" creates a new session tab. Sessions are independent — you can run multiple attacks simultaneously. Each session retains its raw request template, attack config, and results.
+
+### Marking Positions
+
+In the raw packet editor, wrap the part of the request you want to fuzz with `§` markers:
+
+```
+POST /login HTTP/1.1
+Host: example.com
+Content-Type: application/json
+
+{"username":"§admin§","password":"§password§"}
+```
+
+Each `§...§` pair is one position. The text between the markers is the default value shown in the editor.
+
+### Attack Types
+
+| Type | Behaviour |
+|---|---|
+| **Sniper** | One position at a time. Each payload is placed into each position in turn while others keep their default value. Total requests = positions × payloads. |
+| **Battering Ram** | The same payload is inserted into all positions simultaneously. Total requests = payloads. |
+| **Pitchfork** | Parallel iteration. Each position gets its own payload set. The Nth request uses the Nth payload from each set. Stops when the shortest set is exhausted. |
+
+### Payload Sources
+
+Each position (for Sniper / Pitchfork) or the single shared set (Battering Ram) can use one of three source types:
+
+**Simple List** — a newline-separated list of values. Paste directly or import a `.txt`/`.csv` wordlist file.
+
+**Numbers** — generate a numeric sequence:
+- From / To / Step (supports both ascending and descending)
+- e.g. `from=1, to=10, step=1` → `1, 2, 3, … 10`
+
+**Brute Force** — generate all combinations of a character set:
+- Charset (e.g. `abcdefghijklmnopqrstuvwxyz0123456789`)
+- Min length / Max length
+- Total count is shown before starting (can be very large)
+
+### Running an Attack
+
+Click **Start Attack**. A configuration modal lets you set:
+- Attack type
+- Payload sets (one per position for Pitchfork, one shared for Sniper/Battering Ram)
+- Concurrency (number of parallel requests)
+
+While running, a progress bar and live counter update as requests complete. Click **Cancel** to stop early.
+
+### Results Table
+
+Results appear in real time as each request completes. Columns:
+
+| Column | Description |
+|---|---|
+| # | Request index |
+| Payload | The payload value(s) used |
+| Status | Response status code |
+| Size | Response body size |
+| Duration | Round-trip time |
+
+Click any result row to inspect the full request and response in the panel below. Results are sortable by any column — sort by size or status to surface anomalies quickly.
+
+### Filtering Results
+
+The results table has its own filter bar:
+- Filter by status code range
+- Filter by response size range
+- Search across payloads
 
 ---
 
@@ -193,11 +251,9 @@ Failed requests (network errors, timeouts) show an error badge.
 
 **Route:** `/sitemap`
 
-The SiteMap provides a tree view of all captured traffic organized by host and path. It gives a structural overview of an application's API surface — like a sitemap for an HTTP target.
+The SiteMap provides a tree view of all captured traffic organised by host and path. It is a structural overview of the application's HTTP surface.
 
 ### The Tree
-
-The tree is organized as:
 
 ```
 ▼ api.example.com          (8 req)
@@ -207,109 +263,37 @@ The tree is organized as:
         GET   200  request #44
     ▼ /admin
         POST  403  request #12
-  ▼ /auth
-      POST  200  request #91
 ▼ static.example.com       (3 req)
 ```
 
-- **Host nodes** (globe icon) — one per distinct hostname
-- **Segment nodes** (folder icon) — one per path segment
-- **Request leaves** (file icon) — one per unique `method + path` combination
+Nodes: **host** (globe icon), **path segment** (folder icon), **request leaf** (file icon).
 
-Each node shows a count badge: `N req` for total captured requests and `N rsp` for those with a recorded response.
+The tree is **collapsed by default**. Click any node to expand it.
 
 ### Deduplication
 
-Each unique route (`scheme://host/path`) shows only one representative request leaf. When multiple requests hit the same route:
-- If any has a **2xx** response, the most recent 2xx is shown (preferred)
-- Otherwise, the most recent request by ID is shown
-- The occurrence count badge shows how many times the route was seen (e.g. `5x`)
+Each unique route (`method + host + path`) shows one representative leaf. When multiple requests hit the same route, the most recent 2xx is preferred; otherwise the latest by ID. An occurrence badge shows how many times the route was seen (`5x`).
 
 ### Expanding and Collapsing
 
-- Click any host or segment node to toggle it open/closed
-- **Expand Hosts** button — opens all top-level host nodes
-- **Collapse All** button — closes everything
-
-### Selecting and Inspecting
-
-Clicking a request leaf (the row body, not the checkbox) selects it and opens it in the Request Inspector panel — the same inspector used in History.
-
-### Filters
-
-The SiteMap shares the same filter system as History (host, method, status, content-type, extension, search). Click the **Filters** button or press `Ctrl+F` / `Cmd+F` to open the filter modal. The tree rebuilds automatically as filters change.
-
-The **In Scope** badge in the tree view header means the tree only shows requests that pass the current scope and filter settings.
+- Click any node to toggle
+- **Expand Hosts** — opens all top-level host nodes
+- **Collapse All** — closes everything
 
 ### Multi-Select and Export
 
-The SiteMap supports selecting multiple requests for bulk export.
+Checkboxes on every node. Branch checkboxes select/deselect all leaves beneath them (indeterminate state when partially selected). **Export N** dropdown appears when items are selected:
 
-**Selecting:**
-- Each request leaf and each branch node has a **checkbox** on its left side.
-- Clicking a branch checkbox selects or deselects all request leaves under that branch.
-- Branch checkboxes show an **indeterminate** state (–) when some but not all leaves are selected.
-- **Select All** — selects every visible request (respects current filters)
-- **Clear** — deselects everything (appears when anything is selected)
+- **Export as JSON** — PandoraBox JSON format with base64-encoded bodies
+- **Export as HAR** — HTTP Archive 1.2 (importable in Burp, browser DevTools, etc.)
 
-**Exporting:**
-When one or more requests are selected, an **Export N** dropdown appears:
+### Deleting from SiteMap
 
-- **Export as JSON** — PandoraBox's own JSON format with base64-encoded bodies. Useful for scripting or archival.
-- **Export as HAR** — HTTP Archive 1.2 format. Import into Burp Suite, browser DevTools, or other HTTP analysis tools.
+Trash icon on each node deletes all requests under it. Bulk delete via checkbox selection. Deletes are permanent and cascade to responses, replay records, and WebSocket frames.
 
-### Deleting From SiteMap
+### Stats
 
-The SiteMap supports deleting traffic directly from the tree.
-
-- Click the trash action on a host or path segment to delete all captured requests under that branch.
-- Click the trash action on a request leaf to delete every captured occurrence represented by that route leaf.
-- Select multiple entries with checkboxes and use **Delete** in the tree toolbar to delete them in bulk.
-
-Deletes are permanent and also remove linked responses, replay records, and WebSocket frames.
-
-The export fetches full request + response data (including bodies) for each selected ID, then triggers a file download. Filename format: `pandora-export-YYYY-MM-DDTHH-MM-SS.{json|har}`.
-
-**JSON export format:**
-```json
-{
-  "version": "1",
-  "tool": "PandoraBox",
-  "exported_at": "2024-01-15T10:30:00Z",
-  "count": 2,
-  "entries": [
-    {
-      "id": 47,
-      "timestamp": "...",
-      "request": {
-        "method": "POST",
-        "scheme": "https",
-        "host": "api.example.com",
-        "path": "/v1/login",
-        "query": "",
-        "headers": { "Content-Type": ["application/json"] },
-        "body_b64": "eyJ1c2VybmFtZSI6ImFkbWluIn0="
-      },
-      "response": {
-        "status_code": 200,
-        "status_text": "OK",
-        "headers": { "Content-Type": ["application/json"] },
-        "body_b64": "eyJzdWNjZXNzIjp0cnVlfQ==",
-        "duration_ms": 123,
-        "size_bytes": 15
-      }
-    }
-  ]
-}
-```
-
-### Stats Cards
-
-Above the tree, four stat cards show at a glance:
-- **Hosts** — distinct domains in the filtered tree
-- **Routes** — unique host + path combinations
-- **Requests** — total captured requests currently visible
-- **Responses** — requests that have a recorded response
+Four cards above the tree: **Hosts**, **Routes**, **Requests**, **Responses**.
 
 ---
 
@@ -317,241 +301,566 @@ Above the tree, four stat cards show at a glance:
 
 **Route:** `/scope`
 
-The Scope page defines which hosts and paths are intercepted and stored. Out-of-scope requests are forwarded transparently — they appear in no tables, trigger no events, and produce no database entries.
+Scope defines which traffic is captured and stored. Out-of-scope requests are forwarded transparently — no storage, no events, no UI entries.
 
-### Enable / Disable Scope
+### Enable / Disable
 
-The scope toggle at the top of the page turns scoping on or off globally. When off, all traffic is captured regardless of rules. The current state is shown in the SiteMap header badge.
+The global toggle turns scoping on or off. When off, all traffic is captured.
 
 ### Include Rules
 
-Include rules define what IS captured. If any include rules are enabled:
-- A request must match **at least one** include rule to be captured.
-- If no include rules are enabled, all traffic is included.
+If any include rules are enabled, a request must match at least one to be captured. No include rules = everything is included.
 
 ### Exclude Rules
 
-Exclude rules define what is NOT captured. A request matching any enabled exclude rule is rejected — even if it also matches an include rule. Excludes take priority.
+A request matching any enabled exclude rule is rejected — even if it also matches an include rule. Excludes always win.
 
 ### Rule Format
 
-Each rule has:
-
 | Field | Description |
 |---|---|
-| **Enabled** | Toggle to activate/deactivate the rule without deleting it |
-| **Pattern Type** | How the host and path patterns are matched |
-| **Host** | Pattern to match against the request hostname |
-| **Path** | Pattern to match against the URL path (empty = any path) |
+| Enabled | Toggle without deleting |
+| Pattern Type | `exact` / `contains` / `wildcard` / `regex` |
+| Host | Pattern against the request hostname |
+| Path | Pattern against the URL path (empty = any path) |
 
 ### Pattern Types
 
-| Type | Description | Example |
+| Type | Behaviour | Example |
 |---|---|---|
-| `exact` | Full string equality | `api.example.com` |
-| `contains` | Substring match | `example` matches `api.example.com` |
-| `wildcard` | Glob matching (`*` = any, `?` = one char) | `*.example.com` |
+| `exact` | Full equality | `api.example.com` |
+| `contains` | Substring | `example` matches `api.example.com` |
+| `wildcard` | Glob (`*` = any, `?` = one char) | `*.example.com` |
 | `regex` | Full regular expression | `^api\d+\.example\.com$` |
 
-### Common Scope Patterns
+---
 
-**Capture a single domain and all subdomains:**
-- Include: host = `*.example.com`, type = `wildcard`, path = (empty)
+## Match & Replace
 
-**Exclude static assets:**
-- Exclude: host = `*.example.com`, type = `wildcard`, path = `/static`, type = `contains`
+**Route:** `/match-replace`
 
-**Target a specific API prefix only:**
-- Include: host = `api.example.com`, type = `exact`, path = `/v2/`, type = `contains`
+Match & Replace rules automatically transform requests and responses passing through the proxy. They run on every captured request/response before storage and before the response is returned to the browser.
+
+### Rule Fields
+
+| Field | Description |
+|---|---|
+| Enabled | Toggle the rule without deleting it |
+| Name | Human-readable label (optional) |
+| Target | What to match against (see below) |
+| Match | The pattern to look for |
+| Replace | The replacement text (empty = delete the match) |
+| Is Regex | Treat Match as a Go regular expression |
+
+### Targets
+
+| Target | Applies to |
+|---|---|
+| `req-url` | The full request URL (method + path + query) |
+| `req-header` | Request headers — each header line (`Name: value`) |
+| `req-body` | Request body (decoded bytes) |
+| `res-header` | Response headers — each header line |
+| `res-body` | Response body (decoded bytes) |
+
+### Matching Behaviour
+
+- **Plain string** — literal substring match and replace
+- **Regex** — Go `regexp` syntax. Capture groups can be referenced in the replacement as `$1`, `$2`, etc. An empty replacement deletes the matched text.
+
+For header targets, the rule is applied to each header line individually in `Name: value` format. To delete a header entirely, match the full line pattern with regex and replace with an empty string.
+
+### Built-in Presets (disabled by default)
+
+Five pre-configured rules ship with every project:
+
+| Name | Target | Effect |
+|---|---|---|
+| Require non-cached response | `req-header` | Removes `If-Modified-Since` headers |
+| Require non-cached response | `req-header` | Removes `If-None-Match` headers |
+| Emulate Firefox User-Agent | `req-header` | Replaces `User-Agent` with Firefox 128 |
+| Ignore Cookies | `res-header` | Removes `Set-Cookie` headers |
+| Hide Referer header | `req-header` | Removes `Referer` header |
+
+### Rule Order
+
+Rules are applied in the order they appear in the list. Use drag-and-drop to reorder. The result of one rule is the input to the next, so rules compose.
+
+---
+
+## Middleware
+
+**Route:** `/middleware`
+
+Middleware is a Python pipeline that intercepts and can rewrite HTTP requests, HTTP responses, and WebSocket frames as they pass through the proxy in real time. The runtime keeps a persistent `python3` subprocess and streams packet data into it.
+
+### Architecture
+
+The middleware canvas shows nodes and edges. Nodes are Python scripts; edges define execution order within the same traffic type. Nodes are evaluated in topological order.
+
+```
+[Request Node A] → [Request Node B]
+[Response Node C]
+[WS Client→Server Node D]
+```
+
+### Node Types
+
+| Type | Traffic |
+|---|---|
+| `request` | Outbound HTTP requests (before sending upstream) |
+| `response` | Inbound HTTP responses (before returning to browser) |
+| `ws_c2s` | WebSocket frames from client to server |
+| `ws_s2c` | WebSocket frames from server to client |
+
+### Writing a Node
+
+Each node must define a `process(packet)` function. If it returns `None`, the packet passes through unchanged. If it returns a packet object, that becomes the modified packet.
+
+**HTTP Request node:**
+
+```python
+def process(packet):
+    # packet.method   → str
+    # packet.url      → str
+    # packet.headers  → dict[str, list[str]]
+    # packet.body     → bytes
+
+    # Add a debug header
+    packet.headers["X-Debug"] = ["1"]
+
+    # Rewrite the body
+    if packet.body:
+        packet.body = packet.body.replace(b"staging", b"production")
+
+    return packet
+```
+
+**HTTP Response node:**
+
+```python
+def process(packet):
+    # packet.status_code  → int
+    # packet.status_text  → str
+    # packet.headers      → dict[str, list[str]]
+    # packet.body         → bytes
+
+    # Bypass a 401 to inspect the response body
+    if packet.status_code == 401:
+        packet.status_code = 200
+        packet.status_text = "OK"
+
+    return packet
+```
+
+**WebSocket frame node:**
+
+```python
+def process(packet):
+    # packet.direction   → "ws_c2s" | "ws_s2c"
+    # packet.opcode      → int (1=text, 2=binary, 8=close, 9=ping, 10=pong)
+    # packet.payload     → bytes
+
+    if packet.opcode == 1:
+        text = packet.payload.decode("utf-8", errors="ignore")
+        text = text.replace("old_value", "new_value")
+        packet.payload = text.encode("utf-8")
+
+    return packet
+```
+
+### Execution Rules
+
+- Middleware only runs when the global **Enabled** toggle is on
+- Only **enabled** nodes execute
+- If a node raises an exception, the error is logged to the Console and the original packet continues unchanged
+- WebSocket middleware rewrites live traffic — changes affect frames in transit, not just the stored history
+
+### Console Output
+
+`print()` statements in middleware code go to the **Console** panel (accessible from the sidebar). Each line is a console event with a timestamp and `source=middleware`. Useful for debugging packet contents.
+
+---
+
+## Flows
+
+**Route:** `/flows`
+
+Flows are project-stored multi-step automations. Each flow chains HTTP request replays with Python post-processing steps. Variables extracted from one step's response are injected into subsequent request templates.
+
+### Flow Structure
+
+A flow has a list of ordered steps and a variables dictionary. Variables are interpolated into request steps using `{{variable_name}}` syntax.
+
+```
+Step 1 (request): POST /api/login  → extracts token
+Step 2 (process): parse JSON, store token in {{auth_token}}
+Step 3 (request): GET /api/profile  → uses Authorization: Bearer {{auth_token}}
+```
+
+### Step Types
+
+**Request step** — replays a raw HTTP packet:
+
+```http
+POST /api/login HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+
+{"username":"{{username}}","password":"{{password}}"}
+```
+
+The raw packet is base64-encoded in the flow definition. Variable interpolation is performed at runtime before sending. PandoraBox replays the resulting request through the full proxy pipeline (scope, match-and-replace, middleware all apply).
+
+**Process step** — runs a Python function:
+
+```python
+import json
+
+def process(ctx):
+    # ctx.response.status   → int
+    # ctx.response.headers  → dict[str, str]
+    # ctx.response.body     → str
+    # ctx.variables         → dict[str, str]
+
+    data = json.loads(ctx.response.body or "{}")
+    token = data.get("access_token", "")
+    return {"variables": {"auth_token": token}}
+```
+
+Returning `None` is equivalent to returning an empty variables dict. Variables returned by a process step are merged into the flow's variable map for all subsequent steps.
+
+### Console Output
+
+`print()` statements in process step code appear in the **Console** panel with `source=flow`.
+
+### Creating and Running Flows
+
+The Flows page has a visual step editor. Add steps with the `+` button, choose the type, and edit the content in the panel. Use the **Run** button to execute the flow from the beginning. Seed variable overrides can be provided at run time.
+
+Steps can also be created and run via MCP: `flow_save` to create/update, `flow_run` to execute with optional variable overrides.
+
+### Practical Patterns
+
+**Login → extract token → use token:**
+
+1. Request step: `POST /api/login` with `{{username}}` and `{{password}}`
+2. Process step: parse the JSON response and extract `access_token`
+3. Request step: `GET /api/protected` with `Authorization: Bearer {{access_token}}`
+
+**CSRF token flow:**
+
+1. Request step: `GET /login` (fetches the page)
+2. Process step: extract the CSRF token from the HTML body using a regex
+3. Request step: `POST /login` with the extracted CSRF token in the body
+
+---
+
+## Organizer
+
+**Route:** `/organizer`
+
+The Organizer is a folder-based notebook for grouping and annotating captured requests. It is independent of History — adding a request to a folder does not affect the original capture.
+
+### Folders
+
+Create folders with the **+ New Folder** button. Folders can be renamed, reordered by drag-and-drop, and deleted (this removes the folder and its items but not the underlying requests from History).
+
+Each folder shows the item count and a short description (editable inline).
+
+### Adding Requests
+
+Right-click any request in History or SiteMap → **Add to Organizer** → select the target folder. A request can appear in multiple folders simultaneously.
+
+### Items
+
+Each item in a folder shows:
+- The request method, host, and path
+- A freeform **note** field — written in Markdown, rendered in a preview panel
+- The full Request Inspector (same view as History)
+
+### Notes
+
+Click the note area on any item to open a Monaco editor for writing Markdown. Switch to the **Preview** tab to see the rendered output. Notes are saved automatically. Useful for recording findings, payloads that worked, or analysis steps.
+
+### Reordering
+
+Items within a folder can be reordered by drag-and-drop. Folder order can also be reordered.
+
+---
+
+## Converter
+
+**Route:** `/converter`
+
+The Converter is an encoding/decoding/hashing tool built into PandoraBox. It supports single-step transformations and chained stacks.
+
+### Single Transform
+
+Paste any text into the input box, select an algorithm, and the output appears immediately.
+
+### Built-in Algorithms
+
+| Category | Algorithms |
+|---|---|
+| **Encode** | Base64 Encode, URL Encode, Hex Encode, HTML Escape |
+| **Decode** | Base64 Decode, URL Decode, Hex Decode, HTML Unescape |
+| **Hash** | MD5, SHA1, SHA256, SHA512 |
+| **Transform** | JSON Pretty, JSON Minify, ROT13 |
+| **Extended** | Additional algorithms from [Boop](https://boop.okat.best/) scripts, if Boop is installed |
+
+### Stacks
+
+A **stack** is a saved sequence of algorithm steps applied in order. The output of each step is the input to the next.
+
+**Example stack — decode a JWT payload:**
+1. Split on `.` (take the second segment) — or paste manually
+2. Base64 Decode
+3. JSON Pretty
+
+Create a stack with **+ New Stack**, add steps, and name it. Stacks are saved per project in `project.json`. Run a saved stack by name from the dropdown, or inline by clicking **Run Stack**.
+
+### From the Request Inspector
+
+The Converter is also accessible from the Request Inspector's body context menu: select any text, right-click → **Send to Converter**.
+
+---
+
+## Collaborator
+
+**Route:** `/collaborator`
+
+The Collaborator feature provides out-of-band (OOB) interaction detection — useful for finding server-side request forgery (SSRF), blind injection, XXE, and similar vulnerabilities where the payload effect is not visible in the HTTP response.
+
+### How It Works
+
+PandoraBox starts a Collaborator session by connecting to a configurable interaction server (default: Burp Collaborator, or any compatible OOB service). The server provides a unique subdomain. Inject that subdomain into a target parameter. When the target server makes a DNS lookup or HTTP/HTTPS request to that subdomain, the Collaborator server records the interaction and PandoraBox polls for it.
+
+### Starting a Session
+
+Via the UI: click **New Session** and enter a Collaborator server address.
+
+Via MCP: `collaborator_start(server="...")` returns a `session_id` and a generated payload URL (`collaborator_generate_url`). The MCP client can then inject the URL into requests and poll for interactions with `collaborator_poll(session_id=...)`.
+
+### Viewing Interactions
+
+Each interaction shows:
+- Type: `dns`, `http`, or `https`
+- Timestamp
+- The full DNS query or HTTP request details
+- Source IP
+
+Sessions created via MCP are visible in the UI on the Collaborator page alongside manually started sessions.
+
+### Polling
+
+The UI polls automatically every few seconds while a session is selected. MCP-based workflows use `collaborator_poll` explicitly.
+
+---
+
+## Team Sync
+
+**Route:** `/settings` → Team tab (client) or **admin panel** (server mode)
+
+Team Sync allows multiple PandoraBox instances to share captured traffic and organizer state in real time over a WebSocket connection to a shared team server.
+
+### Client Mode
+
+Any PandoraBox instance can connect to a team server:
+
+1. Go to the Team tab in Settings (or the sidebar's Team section)
+2. Enter the server URL and password
+3. Click **Connect**
+
+Once connected:
+- New traffic captured by any member appears in your History in real time
+- Organizer folder/item changes are synced to all members
+- The member list shows who is currently connected
+
+### Server Mode
+
+Run PandoraBox as a team server with the `--server` CLI flag. The server mode enables the admin panel:
+
+- **Members** — list currently connected users, kick a member
+- **Config** — set the server password, listening port, data directory
+- **Export** — download the shared project database
+- **Restart / Migrate** — manage the server process
+
+Server-mode traffic is stored in the server's own database. All clients receive the same traffic feed.
+
+### What Syncs
+
+| Feature | Synced |
+|---|---|
+| New HTTP requests + responses | ✓ |
+| WebSocket frames | ✓ |
+| Organizer folders and items | ✓ |
+| Project config (scope, filters, etc.) | ✓ (server → clients) |
+| Intercept state | ✗ (per-client) |
+| Replay queue | ✗ (per-client) |
 
 ---
 
 ## Request Inspector
 
-The Request Inspector appears in History, Replay, Intercept, and SiteMap whenever a request is selected. It shows the full details of a single HTTP exchange.
+The Request Inspector appears in History, Replay, Intercept, SiteMap, and Organizer whenever a request is selected. It shows the full details of a single HTTP exchange.
 
 ### Tabs
 
 **Request tab:**
-- HTTP method, scheme, host, full path + query
-- Request headers (decoded from JSON storage format)
+- Method, scheme, host, full path + query
+- Request headers
 - Request body (decoded, syntax-highlighted)
 
 **Response tab:**
-- Status code and status text
+- Status code, protocol, reason phrase
 - Response headers
 - Response body (decoded, syntax-highlighted)
-- Duration and size
+- Duration and response size
 
-### Body Rendering
+### Body Views
 
-Bodies are decoded intelligently:
-- **JSON** — pretty-printed with syntax highlighting
-- **XML / HTML** — pretty-printed
-- **Binary** — shown as a hex dump (`0000  4e 6f 74 20 46 6f 75 6e  |Not Foun|`)
-- **Plain text** — shown as-is
+Three views for each body:
 
-The language is auto-detected from the `Content-Type` header.
+| View | Description |
+|---|---|
+| **Pretty** | Auto-decoded and formatted (JSON pretty-print, XML indent, etc.) with syntax highlighting |
+| **Raw** | The raw bytes as-is (still decoded from any transfer encoding) |
+| **Hex** | Hexdump: `0000  4e 6f 74 20 46 6f 75 6e  │Not Foun│` |
 
-### Raw View
+The language is auto-detected from `Content-Type`.
 
-The **Copy Raw** button copies the raw HTTP/1.1 packet to the clipboard (base64-decoded from the `raw` field in the database).
+### Body Decoding
+
+Bodies are decoded transparently from their transfer encoding:
+- `gzip` — decompressed
+- `deflate` — decompressed
+- `br` (Brotli) — decompressed
+- `zstd` — decompressed
+- `chunked` — assembled
+
+### Context Menu (right-click in body)
+
+- Copy selected text
+- Copy full body
+- Copy as base64
+- Send selection to Converter
+- Copy as cURL (on request side)
 
 ### Inspector Position
 
-Toggle between **right** (side-by-side) and **bottom** (stacked) using the layout icon in the inspector toolbar. The split position is draggable and saved per layout per page.
+Toggle between **right** (side-by-side) and **bottom** (stacked) using the layout icon in the toolbar. The divider is draggable and position is saved per page.
 
 ---
 
 ## WebSocket Inspector
 
-When a WebSocket connection is selected in the History page (WebSocket tab), the inspector shows the **WebSocket frame viewer**.
+When a WebSocket connection is selected in History (WebSocket tab), the inspector shows the frame viewer.
 
 ### Frame List
 
-Frames are displayed in a chat-style layout:
-- **Client → Server** frames (c2s) appear on the right
-- **Server → Client** frames (s2c) appear on the left
+Chat-style layout:
+- **Client → Server** (c2s) on the right
+- **Server → Client** (s2c) on the left
 
-Each frame shows:
-- Direction arrow and timestamp
-- Opcode badge: `text`, `binary`, `ping`, `pong`, `close`
-- Decoded payload (text frames decoded as UTF-8; binary frames shown as hex dump if non-printable)
-- Original byte length (may differ from display if truncated > 1 MB)
+Each frame shows: direction, timestamp, opcode badge (`text` / `binary` / `ping` / `pong` / `close`), and payload preview.
 
 ### Expanding Frames
 
-Click any frame to expand it and see the full payload. JSON text frames are pretty-printed on expand.
+Click any frame to expand its full payload. JSON text frames are pretty-printed on expand.
 
 ### Filtering
 
-The frame viewer has its own filter controls:
-- **Direction** — show only c2s or s2c frames
-- **Type** — show only text or binary frames
-- **Search** — keyword search across decoded payloads
+- Direction: c2s only / s2c only / both
+- Type: text / binary
+- Search: keyword search across decoded payloads
 
 ### Live Updates
 
-While the WebSocket connection is still open, new frames appear in real time via the WebSocket event stream. A **Scroll to Latest** button appears when you're scrolled up and new frames arrive.
+New frames appear in real time while the connection is open. A **Scroll to Latest** button appears when scrolled away from the bottom.
 
 ### permessage-deflate
 
-PandoraBox decompresses `permessage-deflate` compressed frames automatically, including stateful context takeover. The decoded (uncompressed) payload is stored and shown in the UI.
+PandoraBox automatically decompresses `permessage-deflate` frames, including stateful context takeover. The decoded payload is stored and shown.
 
 ---
 
 ## Filters
 
-Filters are shared between History and SiteMap. They are opened via the **Filters** button or `Ctrl+F` / `Cmd+F`. Filters are saved per project in `project.json`.
-
-The filter modal has three tabs:
+Shared between History and SiteMap. Open with the **Filters** button or `Ctrl+F` / `Cmd+F`. Saved per project.
 
 ### Search Tab
 
-**Search Term** — keyword to search for in the selected scope fields.
-
-Options:
-- **Case Sensitive** — match exact case (default: case-insensitive)
-- **Use Regex** — treat the search term as a regular expression. A syntax error indicator appears if the regex is invalid.
-- **Invert Results** — show only requests that do NOT match the search term.
-
-**Scope** — which parts of the request/response to search:
-
-| Field | Description |
+| Option | Description |
 |---|---|
-| Host | Request hostname |
-| Path | URL path |
-| Query | Query string |
-| Req Headers | Request headers |
-| Req Body | Request body |
-| Res Headers | Response headers |
-| Res Body | Response body |
-
-If no scope fields are selected, all fields are searched. Select specific fields to narrow the search.
+| Search Term | Keyword to search |
+| Case Sensitive | Default: insensitive |
+| Use Regex | Treat term as a regular expression |
+| Invert Results | Show only non-matching requests |
+| Scope fields | Host, Path, Query, Req Headers, Req Body, Res Headers, Res Body |
 
 ### Request Tab
 
 | Filter | Description |
 |---|---|
-| **Only show in-scope items** | Toggle to show only requests that match the current Scope rules |
-| **Host** | Substring match on the request hostname |
-| **File Extension — Only Show** | Show only requests whose path ends with one of the listed extensions (comma-separated, e.g. `php, json`) |
-| **File Extension — Hide** | Hide requests whose path ends with the listed extensions (e.g. `js, css, png, woff`) |
-
-The Only Show and Hide extension filters are mutually exclusive — enabling one disables the other.
+| In-scope only | Show only requests matching Scope rules |
+| Host | Substring match on hostname |
+| Extension — Only Show | Show only paths ending with these extensions (e.g. `php, json`) |
+| Extension — Hide | Hide paths ending with these extensions (e.g. `js, css, png, woff`) |
 
 ### Response Tab
 
-**Status Code** — click one or more status class chips to filter by response status:
+**Status Code chips:** `1xx`, `2xx`, `3xx`, `4xx`, `5xx` — multi-select, OR logic.
 
-| Chip | Matches |
-|---|---|
-| `1xx` | Informational (100–199) |
-| `2xx` | Success (200–299) |
-| `3xx` | Redirect (300–399) |
-| `4xx` | Client error (400–499) |
-| `5xx` | Server error (500–599) |
+**Content-Type chips:** JSON, HTML, JS, CSS, XML, Form, Image, Protobuf — multi-select.
 
-Multiple chips can be active simultaneously (OR logic).
+Both chips populate text fields that also accept manual comma-separated values for custom patterns.
 
-**Content-Type** — quick-select chips for common content types. Multiple chips can be active simultaneously:
+### Applying
 
-| Chip | Matches |
-|---|---|
-| JSON | `application/json` |
-| HTML | `text/html` |
-| JS | `text/javascript` |
-| CSS | `text/css` |
-| XML | `xml` (matches application/xml, text/xml) |
-| Form | `application/x-www-form-urlencoded` |
-| Image | `image/` (matches any image type) |
-| Protobuf | `protobuf` |
-
-The chips populate the **Only Show** text field. You can also type directly into the field (comma-separated values for multiple patterns). The **Hide** field works the same way but excludes matching responses.
-
-Both content-type filters use substring matching against response headers, so partial values like `xml` match multiple content types.
-
-### Applying and Resetting
-
-- **Apply** (or `Cmd+Enter` / `Ctrl+Enter`) — applies filters and closes the modal
-- **Cancel** — discards changes and closes
-- **Reset All** — clears every filter back to defaults
-- The tab bar shows a count badge for active filters per tab
+- **Apply** or `Cmd+Enter` — applies and closes
+- **Cancel** — discards changes
+- **Reset All** — clears every filter
 
 ---
 
 ## Projects
 
-PandoraBox stores all traffic and settings in **projects**. Each project is a folder on disk containing a `project.json` config file and a `pandora.db` SQLite database.
+PandoraBox stores all traffic and settings in **projects**. Each project is a directory on disk with a `project.json` config file and a `pandora.db` SQLite database.
 
-### Project Switcher
+### Launcher
 
-The project switcher is in the sidebar (bottom area). Click it to see:
-- The current project name and path
-- A list of up to 10 recent projects
-- **New Project** — creates a new project folder
-- **Open Project** — opens a file browser to select an existing project folder
-- **Save As** — copies the current project to a new location
+On startup, the launcher modal shows:
+- **Temporary Project** — resets on each launch; good for one-off exploration
+- **Recent Projects** — last 10 opened projects; click the `×` on any entry to remove it from the list without deleting files
+- **New Project** — creates a new folder with a fresh database
+- **Open Project** — file browser to open an existing project folder
 
-### Default (Temp) Project
+### Per-Project State
 
-On first launch, a temporary project is created automatically at `~/.pandorabox/temp/`. This project resets on each launch. To persist your work, use **Save As** to save it to a named location.
+| What | Where |
+|---|---|
+| All captured traffic | `pandora.db` |
+| Proxy port, intercept state | `project.json` → `proxy` |
+| Scope rules | `project.json` → `scope` |
+| Traffic filters | `project.json` → `filters` |
+| Match & Replace rules | `project.json` → `match_replace` |
+| Middleware config + node code | `project.json` → `middleware` |
+| Flows + step code | `project.json` → `flows` |
+| Converter stacks | `project.json` → `converter` |
+| MCP enabled/disabled | `project.json` → `mcp_disabled` |
+| MCP port | `project.json` → `mcp_port` |
 
-### Per-Project Settings
+### Global State (not per-project)
 
-Each project independently stores:
-- Proxy port and intercept enabled state
-- Scope rules (include/exclude)
-- Traffic filters (search, host, status, content-type, etc.)
-- MCP enabled/disabled flag
-
-### Global Settings
-
-The following are global (not per-project), stored in `localStorage`:
-- Theme (mode, variant, accent color, font, font size)
-- Inspector position (right/bottom)
-- Split ratios per page
+Stored in `localStorage`:
+- Theme (mode, variant, accent, font, font sizes)
+- Inspector position and split ratios
 - Keyboard shortcut bindings
+- Replay auto-content-length preference
+
+### Save As
+
+**Save As** copies the current project (both `project.json` and `pandora.db`) to a new path. The current session switches to the copy.
 
 ---
 
@@ -561,7 +870,7 @@ The following are global (not per-project), stored in `localStorage`:
 
 ### Theme Mode
 
-Switch between **Dark** and **Light** mode. Changes apply immediately.
+**Dark** or **Light**. Changes apply immediately.
 
 ### Theme Style
 
@@ -572,33 +881,33 @@ Switch between **Dark** and **Light** mode. Changes apply immediately.
 | Dark | Midnight, Charcoal, Slate, Obsidian, Deep |
 | Light | Day, Cream, Cool, Paper, Solar |
 
-Each variant shows a color swatch preview.
-
 ### Accent Color
 
-10 accent colors: **Teal** (default), Blue, Purple, Indigo, Pink, Red, Orange, Yellow, Green, Cyan.
+10 options: Teal, Blue, Purple, Indigo, Pink, Red, Orange, Yellow, Green, Cyan.
 
-The accent color is used for primary buttons, active states, highlights, and focus rings throughout the UI.
+Used for primary buttons, active states, focus rings, and highlights.
 
 ### Typography
 
-**Font Size** — slider from 10px to 20px (default: 13px). Click preset values (10, 12, 14, 16, 18, 20) for quick selection.
+**App Font Size** — slider from 10px to 20px (default: 14px). Scales all UI text — sidebar, tables, panels — by setting the root `font-size` so all Tailwind rem utilities scale proportionally. Quick-pick buttons: 10, 12, 14, 16, 18, 20.
+
+**Editor Font Size** — slider from 10px to 20px (default: 13px). Scales Monaco editors (request/response inspector, intercept editor, middleware node editor, note editor) independently of the app font. Same quick-pick buttons.
 
 **Font Family** — 9 options:
 
-| Font | Description |
+| Font | Notes |
 |---|---|
-| System UI | OS default font |
+| System UI | OS default |
 | Inter | Clean sans-serif |
-| Source Code Pro | Optimized for code |
+| Source Code Pro | Code-optimised |
 | JetBrains Mono | Popular dev font (default) |
 | Fira Code | Supports ligatures |
-| Cascadia Code | Microsoft's font |
+| Cascadia Code | Microsoft open source |
 | IBM Plex Mono | IBM open source |
-| Roboto Mono | Google's monospace |
-| Monospace | Browser default monospace |
+| Roboto Mono | Google monospace |
+| Monospace | Browser default |
 
-A live **preview** panel below the font options shows a sample text block in the selected font and size.
+A **preview** panel shows sample text in the selected font and editor size.
 
 ---
 
@@ -606,60 +915,58 @@ A live **preview** panel below the font options shows a sample text block in the
 
 **Route:** `/settings` → Shortcuts tab
 
-All shortcuts are customizable. The shortcut system can be enabled or disabled globally.
-
-### Default Bindings
+All bindings are customisable. The shortcut system can be disabled globally.
 
 (`Mod` = `Cmd` on macOS, `Ctrl` on Windows/Linux)
 
+### Default Bindings
+
 **Navigation**
 
-| Action | Default | Description |
-|---|---|---|
-| Go to Intercept | `Alt+1` | Open the Intercept page |
-| Go to History | `Alt+2` | Open the History page |
-| Go to Scope | `Alt+3` | Open the Scope page |
-| Go to SiteMap | `Alt+4` | Open the SiteMap page |
-| Go to Replay | `Alt+5` | Open the Replay page |
-| Go to Settings | `Alt+6` | Open the Settings page |
+| Action | Default |
+|---|---|
+| Go to Intercept | `Alt+1` |
+| Go to History | `Alt+2` |
+| Go to Scope | `Alt+3` |
+| Go to SiteMap | `Alt+4` |
+| Go to Replay | `Alt+5` |
+| Go to Settings | `Alt+6` |
 
 **Common**
 
-| Action | Default | Description |
-|---|---|---|
-| Open Filters | `Mod+F` | Open the filter modal (History / SiteMap) |
-| Close Current | `Mod+W` | Close the currently open request, editor, or modal |
-| Send Selected To Replay | `Mod+R` | Send selected request to Replay queue |
-| Cancel Current Context | `Escape` | Close active modal or clear selection |
+| Action | Default |
+|---|---|
+| Open Filters | `Mod+F` |
+| Close Current | `Mod+W` |
+| Send to Replay | `Mod+R` |
+| Cancel / Escape | `Escape` |
 
 **Intercept**
 
-| Action | Default | Description |
-|---|---|---|
-| Toggle Intercept | `Mod+Shift+I` | Enable or disable interception |
-| Forward Selected | `Mod+Shift+F` | Forward the selected held request |
-| Drop Selected | `Mod+Shift+D` | Drop the selected held request |
-| Toggle Edit Mode | `Mod+Shift+M` | Open the raw editor for the selected request |
-| Apply Changes & Forward | `Mod+Enter` | Send the modified packet upstream |
-| Select Previous | `Alt+↑` | Move to previous held request |
-| Select Next | `Alt+↓` | Move to next held request |
+| Action | Default |
+|---|---|
+| Toggle Intercept | `Mod+Shift+I` |
+| Forward Selected | `Mod+Shift+F` |
+| Drop Selected | `Mod+Shift+D` |
+| Toggle Edit Mode | `Mod+Shift+M` |
+| Apply & Forward | `Mod+Enter` |
+| Previous Request | `Alt+↑` |
+| Next Request | `Alt+↓` |
 
 **Replay**
 
-| Action | Default | Description |
-|---|---|---|
-| Send Replay | `Mod+Enter` | Send the selected replay request |
+| Action | Default |
+|---|---|
+| Send Replay | `Mod+Enter` |
 
-### Customizing Shortcuts
+### Customising
 
-1. Click the binding button next to any action (shows the current binding or "Unassigned").
-2. The button switches to **"Press keys..."** mode.
-3. Press the desired key combination.
-4. The new binding is saved immediately.
-5. Press `Escape` to cancel without saving.
-6. Press `Backspace` or `Delete` in capture mode to clear the binding (unassign).
+1. Click the binding button next to any action
+2. Press the desired key combination
+3. Binding saves immediately
+4. Press `Escape` to cancel, `Backspace` / `Delete` to unassign
 
-Click **Reset Defaults** to restore all bindings to their defaults.
+**Reset Defaults** restores all bindings.
 
 ---
 
@@ -667,24 +974,30 @@ Click **Reset Defaults** to restore all bindings to their defaults.
 
 **Route:** `/settings` → Certificate tab
 
-### Downloading the CA Certificate
+### Download
 
-Click **Download CA Certificate** to save `pandorabox-ca.crt` to disk. This is the root certificate that PandoraBox uses to sign forged TLS certificates for intercepted HTTPS connections.
+Click **Download CA Certificate** to save `pandorabox-ca.crt`. This is the root certificate PandoraBox uses to sign forged TLS certificates for intercepted HTTPS connections.
 
-### Installing by Browser / OS
+### Installing
 
-The tab shows step-by-step expandable instructions for:
+Step-by-step instructions in the UI for:
 
-- **macOS (Chrome / Edge / Safari)** — System keychain, Always Trust
-- **Firefox (all platforms)** — Authorities import in Firefox's own cert store
-- **Windows (Chrome / Edge)** — Local Machine, Trusted Root Certification Authorities
+- **macOS (Chrome / Edge / Safari)** — System Keychain → Always Trust
+- **Firefox** — Authorities import in Firefox's own cert store
+- **Windows (Chrome / Edge)** — Trusted Root Certification Authorities (Local Machine)
 - **Linux (Chrome)** — `chrome://settings/certificates` Authorities import
+- **iOS** — Profile install + Settings → Trust
+- **Android** — User certificates or system trust
 
-**Important macOS note:** Install into the **System** keychain, not the Login keychain. After trusting, fully restart Chrome (not just close and reopen the window — use `chrome://restart`).
+**macOS note:** Install into the **System** keychain, not Login. After trusting, restart Chrome with `chrome://restart`.
 
 ### Regenerating the CA
 
-Run `./bin/pandorabox ca regenerate` from the terminal. This creates a new CA key pair. All previously signed leaf certificates are invalidated. You must re-download and re-install the new certificate.
+```bash
+./bin/pandorabox ca regenerate
+```
+
+Generates a new key pair. All previously signed leaf certificates are invalidated. Re-download and reinstall the new certificate.
 
 ---
 
@@ -692,15 +1005,18 @@ Run `./bin/pandorabox ca regenerate` from the terminal. This creates a new CA ke
 
 **Route:** `/settings` → Proxy tab
 
-### HTTP/HTTPS Proxy Address
+### Proxy Address
 
-The proxy always listens on `127.0.0.1:8080` (or the configured port). The address is shown with a **Copy** button. Configure your browser or OS to use this as its HTTP and HTTPS proxy.
+The proxy listens on `127.0.0.1:8080` by default. The address is shown with a **Copy** button. Configure your browser or OS to use this as its HTTP and HTTPS proxy.
+
+### Port
+
+The proxy port is configurable per project. Change it here; the proxy restarts on the new port immediately.
 
 ### Upstream Proxy
 
-Route all outbound traffic through a parent proxy — useful when chaining PandoraBox behind a corporate proxy or another tool.
+Chain all outbound traffic through a parent proxy:
 
-Supported URL formats:
 ```
 http://127.0.0.1:8888
 http://user:pass@proxy.corp.com:8080
@@ -708,11 +1024,11 @@ socks5://127.0.0.1:1080
 socks5://user:pass@socks.corp.com:1080
 ```
 
-Leave empty to connect directly. Changes are saved per project and take effect immediately.
+Leave empty for direct connections. Changes take effect immediately.
 
-### Replay Editor — Auto Content-Length
+### Auto Content-Length (Replay)
 
-Toggle whether PandoraBox automatically recalculates the `Content-Length` header when the body is edited in the Replay editor. Default: **on**. Saved globally (not per project).
+Automatically recalculates `Content-Length` when the replay editor body changes. Default: on. Saved globally.
 
 ---
 
@@ -720,30 +1036,37 @@ Toggle whether PandoraBox automatically recalculates the `Content-Length` header
 
 **Route:** `/settings` → MCP tab
 
-### Enable / Disable MCP Access
+### Enable / Disable
 
-Toggle whether Claude Desktop (or any MCP client) can access the current project. When disabled, all MCP tool calls return an error. Useful for projects containing sensitive data you don't want an AI to read.
+Per-project toggle. When disabled, all MCP tool calls return an error. Useful for projects containing sensitive data.
 
-This flag is **per project** — different projects can have MCP enabled or disabled independently.
+### Endpoints
 
-### SSE Endpoint
+| Transport | URL |
+|---|---|
+| Streamable HTTP (recommended) | `http://localhost:9090/mcp` |
+| Legacy SSE | `http://localhost:9090/sse` |
 
-The MCP server listens at `http://localhost:9090/sse`. A **Copy** button copies the URL.
+The port is configurable per project.
 
-### Claude Desktop Config Snippet
+### Client Setup Snippets
 
-A pre-formatted JSON block ready to paste into `claude_desktop_config.json`:
+The tab provides copy-paste configuration for common MCP clients:
 
+**Claude Desktop** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "pandorabox": {
-      "url": "http://localhost:9090/sse"
+      "url": "http://localhost:9090/mcp"
     }
   }
 }
 ```
 
-A **Copy** button copies the full snippet.
+**Claude Code:**
+```bash
+claude mcp add pandorabox http://localhost:9090/mcp
+```
 
-For full MCP tool documentation, see [mcp.md](mcp.md).
+For the full MCP tool reference, see [mcp.md](mcp.md) or call `docs_get(topic="tools")` from any connected MCP client.
