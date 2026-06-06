@@ -269,7 +269,7 @@ func (p *Proxy) roundTrip(req *http.Request, scheme string) (*http.Response, *st
 		respRecord := &storage.Response{
 			RequestID:  captured.ID,
 			StatusCode: resp.StatusCode,
-			StatusText: resp.Status,
+			StatusText: http.StatusText(resp.StatusCode),
 			Headers:    string(respHeadersJSON),
 			Body:       respBodyBytes,
 			DurationMs: duration,
@@ -443,7 +443,7 @@ func (p *Proxy) ReplayRequest(reqID int64, modHeaders map[string]string, modBody
 	respHeadersJSON, _ := json.Marshal(resp.Header)
 	respRecord := &storage.Response{
 		StatusCode: resp.StatusCode,
-		StatusText: resp.Status,
+		StatusText: http.StatusText(resp.StatusCode),
 		Proto:      resp.Proto,
 		Headers:    string(respHeadersJSON),
 		Body:       respBodyBytes,
