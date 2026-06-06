@@ -41,7 +41,7 @@
 |------|---------|-------------|
 | 8080 | MITM Proxy | Raw TCP listener. Configure your browser/system to use this. |
 | 7777 | REST API + WebSocket + UI | All `/api/*` endpoints, `/ws` WebSocket, and the embedded React SPA. |
-| 9090 | MCP SSE | Claude Desktop connects here (`http://localhost:9090/sse`). |
+| 9090 | MCP | Streamable HTTP at `/mcp` (recommended). Legacy SSE at `/sse`. Claude Desktop, Claude Code, and other MCP clients connect here. |
 
 All ports are configurable via CLI flags (`--proxy-port`, `--api-port`, `--mcp-port`).
 

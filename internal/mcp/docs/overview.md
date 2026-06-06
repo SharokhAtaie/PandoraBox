@@ -103,7 +103,25 @@ The legacy stringified forms (`headers_json`, `scope_include_json`, …) still w
 
 ## Client setup
 
-PandoraBox serves MCP at `http://localhost:<mcp_port>/mcp` (Streamable HTTP). A legacy SSE endpoint exists at `/sse` for older clients. The in-app Settings page contains copy-paste setup snippets for common clients (Claude Desktop, Claude Code, Codex, Gemini, Qwen).
+PandoraBox serves MCP over Streamable HTTP at `http://localhost:<mcp_port>/mcp`. A legacy SSE endpoint exists at `/sse` for older clients.
+
+**Claude Code:**
+```bash
+claude mcp add --transport http pandorabox http://localhost:9090/mcp
+# across all projects:
+claude mcp add --transport http --scope user pandorabox http://localhost:9090/mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{ "mcpServers": { "pandorabox": { "url": "http://localhost:9090/mcp" } } }
+```
+
+**Gemini CLI:** `gemini mcp add --transport http pandorabox http://localhost:9090/mcp`
+
+**Codex** (`~/.codex/config.toml`): `[mcp_servers.pandorabox]\nurl = "http://localhost:9090/mcp"`
+
+The in-app Settings → MCP tab has live-port-substituted snippets with copy buttons for all clients.
 
 ## Versioning and compatibility
 

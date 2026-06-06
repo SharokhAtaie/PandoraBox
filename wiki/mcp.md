@@ -26,14 +26,63 @@ The deprecated aliases `list_docs` / `get_doc` still work.
 
 PandoraBox exposes MCP over two HTTP transports on a single port (default `9090`):
 
-| Transport | URL | Status |
-|-----------|-----|--------|
-| **Streamable HTTP** (preferred) | `http://localhost:9090/mcp` | Recommended for Claude Code, Claude Desktop, Codex, Gemini, Qwen |
-| Legacy SSE | `http://localhost:9090/sse` (+ `/message`) | Kept for older clients only |
+| Transport | URL | Notes |
+|-----------|-----|-------|
+| **Streamable HTTP** (recommended) | `http://localhost:9090/mcp` | Use this for all current clients |
+| Legacy SSE | `http://localhost:9090/sse` | Kept for older clients only; deprecated |
 
-The port is configurable per project (`update_project(mcp_port=...)`) and via the `--mcp-port` CLI flag.
+The port is configurable per project (`project_update(mcp_port=...)`) and via the `--mcp-port` CLI flag.
 
-The MCP server only accepts requests from `localhost` / `127.0.0.1` / `::1` to avoid exposing the surface to other machines.
+The MCP server only accepts requests from `localhost` / `127.0.0.1` / `::1`.
+
+## Client Setup
+
+**Claude Code** (current CLI syntax):
+```bash
+# Current project only (default)
+claude mcp add --transport http pandorabox http://localhost:9090/mcp
+
+# Available across all your projects
+claude mcp add --transport http --scope user pandorabox http://localhost:9090/mcp
+```
+
+Verify: `claude mcp list`  
+Check live status: type `/mcp` inside a Claude Code session.
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "pandorabox": {
+      "url": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+
+**Gemini CLI:**
+```bash
+gemini mcp add --transport http pandorabox http://localhost:9090/mcp
+```
+
+**Codex** (`~/.codex/config.toml`):
+```toml
+[mcp_servers.pandorabox]
+url = "http://localhost:9090/mcp"
+```
+
+**Qwen Code** (`.qwen/settings.json`):
+```json
+{
+  "mcpServers": {
+    "pandorabox": {
+      "httpUrl": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+
+The in-app **Settings → MCP** tab shows these snippets with live port substitution and copy buttons.
 
 ## Disabling MCP for a project
 

@@ -1051,7 +1051,7 @@ The port is configurable per project.
 
 ### Client Setup Snippets
 
-The tab provides copy-paste configuration for common MCP clients:
+The tab provides copy-paste commands and config snippets for common MCP clients. All use the Streamable HTTP endpoint (`/mcp`).
 
 **Claude Desktop** (`claude_desktop_config.json`):
 ```json
@@ -1064,9 +1064,42 @@ The tab provides copy-paste configuration for common MCP clients:
 }
 ```
 
-**Claude Code:**
+**Claude Code** (CLI):
 ```bash
-claude mcp add pandorabox http://localhost:9090/mcp
+# Add for the current project only (default scope)
+claude mcp add --transport http pandorabox http://localhost:9090/mcp
+
+# Add globally across all your projects
+claude mcp add --transport http --scope user pandorabox http://localhost:9090/mcp
+```
+
+Verify with `claude mcp list`. Use `/mcp` inside a Claude Code session to check live server status.
+
+**Gemini CLI:**
+```bash
+gemini mcp add --transport http pandorabox http://localhost:9090/mcp
+```
+
+**Codex** (`~/.codex/config.toml`):
+```toml
+[mcp_servers.pandorabox]
+url = "http://localhost:9090/mcp"
+```
+
+**Qwen Code** (`.qwen/settings.json`):
+```json
+{
+  "mcpServers": {
+    "pandorabox": {
+      "httpUrl": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+
+**Legacy SSE** (older clients only):
+```
+http://localhost:9090/sse
 ```
 
 For the full MCP tool reference, see [mcp.md](mcp.md) or call `docs_get(topic="tools")` from any connected MCP client.
