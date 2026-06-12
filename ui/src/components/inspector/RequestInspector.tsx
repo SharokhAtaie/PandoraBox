@@ -11,8 +11,9 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { BodyViewer } from '@/components/common/BodyViewer'
 import { AddToFlowModal } from '@/components/flows/AddToFlowModal'
 import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
-import { X, Copy, PanelBottomOpen, PanelRightOpen, Highlighter, RotateCcw, Trash2, GitBranch, FolderPlus, Target, Link, Terminal, Code2, Crosshair, Search, Regex, CaseSensitive } from 'lucide-react'
+import { X, Copy, PanelBottomOpen, PanelRightOpen, Highlighter, RotateCcw, Trash2, GitBranch, FolderPlus, Target, Link, Terminal, Code2, Crosshair, Search, Regex, CaseSensitive, Bot } from 'lucide-react'
 import { copyURL, copyRawRequest, copyAsCurl, copyAsFetch } from '@/lib/copyRequest'
+import { copyMcpPrompt } from '@/lib/mcpPrompt'
 import { displayHost } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { decodeBodyBytes, decodeBodyForDisplay, type DecodedBody, type RawBody } from '@/lib/httpBodies'
@@ -467,6 +468,17 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
           </button>
           <button onClick={() => { copyAsFetch(req); closeContextMenu() }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted">
             <Code2 size={14} />Copy as fetch()
+          </button>
+          <button
+            onClick={() => {
+              copyMcpPrompt(req)
+                .then(() => toast.success('Copied MCP prompt'))
+                .catch(() => toast.error('Copy failed'))
+              closeContextMenu()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+          >
+            <Bot size={14} />Copy MCP Prompt
           </button>
 
           <div className="my-1 border-t border-border" />
