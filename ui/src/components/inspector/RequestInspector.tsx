@@ -12,6 +12,7 @@ import { BodyViewer } from '@/components/common/BodyViewer'
 import { AddToFlowModal } from '@/components/flows/AddToFlowModal'
 import { AddToOrganizerModal } from '@/components/organizer/AddToOrganizerModal'
 import { X, Copy, PanelBottomOpen, PanelRightOpen, Highlighter, RotateCcw, Trash2, GitBranch, FolderPlus, Target, Link, Terminal, Code2, Crosshair, Search, Regex, CaseSensitive, Bot } from 'lucide-react'
+import { copyText } from '@/lib/clipboard'
 import { copyURL, copyRawRequest, copyAsCurl, copyAsFetch } from '@/lib/copyRequest'
 import { copyMcpPrompt } from '@/lib/mcpPrompt'
 import { displayHost } from '@/lib/utils'
@@ -213,10 +214,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
       activeTab === 'response' && req!.response
         ? buildRawResponse(req!.response, responseBody?.text ?? '')
         : buildRawRequest(req!)
-    navigator.clipboard
-      .writeText(raw)
-      .then(() => toast.success(`Copied raw ${activeTab}`))
-      .catch(() => toast.error('Copy failed'))
+    copyText(raw, `Copied raw ${activeTab}`)
   }
 
   return (
@@ -470,12 +468,7 @@ export function RequestInspector({ edge = 'left' }: { edge?: 'left' | 'top' | 'n
             <Code2 size={14} />Copy as fetch()
           </button>
           <button
-            onClick={() => {
-              copyMcpPrompt(req)
-                .then(() => toast.success('Copied MCP prompt'))
-                .catch(() => toast.error('Copy failed'))
-              closeContextMenu()
-            }}
+            onClick={() => { copyMcpPrompt(req); closeContextMenu() }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
           >
             <Bot size={14} />Copy MCP Prompt

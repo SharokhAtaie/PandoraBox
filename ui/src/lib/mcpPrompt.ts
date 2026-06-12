@@ -1,4 +1,5 @@
 import type { Request } from '@/api/client'
+import { copyText } from '@/lib/clipboard'
 import { isWebSocket } from '@/lib/requestFilters'
 import { displayHost } from '@/lib/utils'
 
@@ -50,5 +51,5 @@ Your task:
 }
 
 export function copyMcpPrompt(req: Request): Promise<void> {
-  return navigator.clipboard.writeText(buildMcpPrompt(req))
+  return copyText(buildMcpPrompt(req), 'Copied MCP prompt')
 }

@@ -6,6 +6,7 @@ import {
   ArrowUpRight, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import { useCollaboratorStore, PUBLIC_SERVERS } from '@/store/collaborator'
 import { CollaboratorFilterModal, defaultCollaboratorFilters } from '@/components/collaborator/CollaboratorFilterModal'
 import type { CollaboratorFilters } from '@/components/collaborator/CollaboratorFilterModal'
@@ -112,7 +113,7 @@ function useCopy() {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(key)
       setTimeout(() => setCopied(null), 1500)
-    })
+    }).catch(() => toast.error('Copy failed'))
   }, [])
   return { copy, copied }
 }
